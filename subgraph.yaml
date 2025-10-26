@@ -1,6 +1,8 @@
 specVersion: 1.3.0
 schema:
   file: ./schema.graphql
+features:
+  - ipfsOnEthereumContracts
 indexerHints:
   prune: auto  # Best Practice 1: Improve Query Speed with Pruning
 dataSources:

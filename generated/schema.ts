@@ -157,6 +157,142 @@ export class Post extends Entity {
     this.set("transactionHash", Value.fromBytes(value));
   }
 
+  get ipfsHash(): string | null {
+    let value = this.get("ipfsHash");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsHash(value: string | null) {
+    if (!value) {
+      this.unset("ipfsHash");
+    } else {
+      this.set("ipfsHash", Value.fromString(<string>value));
+    }
+  }
+
+  get ipfsGatewayURL(): string | null {
+    let value = this.get("ipfsGatewayURL");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsGatewayURL(value: string | null) {
+    if (!value) {
+      this.unset("ipfsGatewayURL");
+    } else {
+      this.set("ipfsGatewayURL", Value.fromString(<string>value));
+    }
+  }
+
+  get ipfsContentType(): string | null {
+    let value = this.get("ipfsContentType");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsContentType(value: string | null) {
+    if (!value) {
+      this.unset("ipfsContentType");
+    } else {
+      this.set("ipfsContentType", Value.fromString(<string>value));
+    }
+  }
+
+  get ipfsMetadata(): string | null {
+    let value = this.get("ipfsMetadata");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsMetadata(value: string | null) {
+    if (!value) {
+      this.unset("ipfsMetadata");
+    } else {
+      this.set("ipfsMetadata", Value.fromString(<string>value));
+    }
+  }
+
+  get ipfsDescription(): string | null {
+    let value = this.get("ipfsDescription");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsDescription(value: string | null) {
+    if (!value) {
+      this.unset("ipfsDescription");
+    } else {
+      this.set("ipfsDescription", Value.fromString(<string>value));
+    }
+  }
+
+  get ipfsImage(): string | null {
+    let value = this.get("ipfsImage");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsImage(value: string | null) {
+    if (!value) {
+      this.unset("ipfsImage");
+    } else {
+      this.set("ipfsImage", Value.fromString(<string>value));
+    }
+  }
+
+  get ipfsExternalUrl(): string | null {
+    let value = this.get("ipfsExternalUrl");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsExternalUrl(value: string | null) {
+    if (!value) {
+      this.unset("ipfsExternalUrl");
+    } else {
+      this.set("ipfsExternalUrl", Value.fromString(<string>value));
+    }
+  }
+
+  get ipfsAttributes(): string | null {
+    let value = this.get("ipfsAttributes");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set ipfsAttributes(value: string | null) {
+    if (!value) {
+      this.unset("ipfsAttributes");
+    } else {
+      this.set("ipfsAttributes", Value.fromString(<string>value));
+    }
+  }
+
   get totalSupply(): BigInt {
     let value = this.get("totalSupply");
     if (!value || value.kind == ValueKind.NULL) {

@@ -3,7 +3,7 @@
 # Following all 6 Graph Best Practices from https://thegraph.com/docs/en/subgraphs/best-practices/pruning/
 
 # Core Social Entities
-type Post @entity(immutable: true) {
+type Post @entity(immutable: false) {
   id: Bytes! # ContentCoin contract address
   creator: User!
   content: String!
@@ -13,6 +13,16 @@ type Post @entity(immutable: true) {
   createdAt: BigInt!
   blockNumber: BigInt!
   transactionHash: Bytes!
+
+  # IPFS Content Fields
+  ipfsHash: String # Extracted IPFS hash
+  ipfsGatewayURL: String # IPFS gateway URL for fetching content
+  ipfsContentType: String # Content type (e.g., "application/json")
+  ipfsMetadata: String # Raw IPFS metadata JSON
+  ipfsDescription: String # Parsed description from IPFS
+  ipfsImage: String # Parsed image URL from IPFS
+  ipfsExternalUrl: String # Parsed external URL from IPFS
+  ipfsAttributes: String # Parsed attributes JSON from IPFS
 
   # Social engagement metrics
   totalSupply: BigInt!

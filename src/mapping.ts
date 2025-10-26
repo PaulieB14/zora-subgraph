@@ -24,6 +24,7 @@ import {
   Reward
 } from "../generated/schema"
 import { ContentCoinTemplate, CreatorCoinTemplate } from "../generated/templates"
+import { processIPFSContent, extractMetadataFields, IPFSContent } from "./ipfs-handler"
 
 // Helper function to create unique IDs
 function createId(prefix: string, hash: Bytes, logIndex: BigInt): Bytes {
@@ -37,6 +38,34 @@ function createId(prefix: string, hash: Bytes, logIndex: BigInt): Bytes {
   
   let combined = prefix + hashStr + logStr
   return Bytes.fromHexString(combined)
+}
+
+// Helper function to populate IPFS fields in Post entity
+function populateIPFSFields(post: Post, contentURI: string): void {
+  const ipfsContent = processIPFSContent(contentURI)
+  if (ipfsContent) {
+    post.ipfsHash = ipfsContent.hash
+    post.ipfsGatewayURL = ipfsContent.gatewayURL
+    post.ipfsContentType = ipfsContent.contentType
+    post.ipfsMetadata = ipfsContent.metadata
+    
+    // Extract parsed fields
+    if (ipfsContent.parsedData) {
+      post.ipfsDescription = ipfsContent.getField("description")
+      post.ipfsImage = ipfsContent.getField("image")
+      post.ipfsExternalUrl = ipfsContent.getField("external_url")
+      post.ipfsAttributes = ipfsContent.getField("attributes")
+    }
+    
+    log.info("Populated IPFS fields for post {} - Hash: {}", [
+      post.id.toHexString(),
+      ipfsContent.hash
+    ])
+  } else {
+    log.warning("Failed to process IPFS content for post: {}", [
+      post.id.toHexString()
+    ])
+  }
 }
 
 // Handle ZoraFactory CoinCreatedV4 events (new posts/coins created)
@@ -75,6 +104,10 @@ export function handleCoinCreatedV4(event: CoinCreatedV4): void {
   post.totalTransfers = BigInt.fromI32(0)
   post.totalSwaps = BigInt.fromI32(0)
   post.totalHolders = BigInt.fromI32(0)
+  
+  // Process IPFS content and populate fields
+  populateIPFSFields(post, event.params.uri)
+  
   post.save()
 
   // Create ContentCoin entity
