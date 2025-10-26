@@ -36,7 +36,7 @@ dataSources:
         - name: CreatorCoin
           file: ./abis/CreatorCoin.json
       eventHandlers:
-        - event: CoinCreatedV4(indexed address,indexed address,indexed address,address,string,string,string,address,tuple,bytes32,string)
+        - event: CoinCreatedV4(indexed address,indexed address,indexed address,address,string,string,string,address,(address,address,uint24,int24,address),bytes32,string)
           handler: handleCoinCreatedV4
       file: ./src/mapping.ts
 templates:
