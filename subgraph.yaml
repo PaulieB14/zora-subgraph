@@ -10,7 +10,7 @@ dataSources:
     source:
       address: "0x777777751622c0d3258f214F9DF38E35BF45baF3"  # Real Zora Factory on Base
       abi: ZoraFactory
-      startBlock: 37327140
+      startBlock: 26602741
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -24,8 +24,6 @@ dataSources:
         - Transfer
         - Swap
         - Reward
-        - PostMetrics
-        - UserMetrics
       abis:
         - name: ZoraFactory
           file: ./abis/ZoraFactory.json
@@ -55,7 +53,6 @@ templates:
         - ContentCoin
         - Mint
         - Transfer
-        - PostMetrics
       abis:
         - name: ContentCoin
           file: ./abis/ContentCoin.json
@@ -80,7 +77,6 @@ templates:
         - Transfer
         - Swap
         - Reward
-        - UserMetrics
       abis:
         - name: CreatorCoin
           file: ./abis/CreatorCoin.json

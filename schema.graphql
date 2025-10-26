@@ -3,7 +3,7 @@
 # Following all 6 Graph Best Practices from https://thegraph.com/docs/en/subgraphs/best-practices/pruning/
 
 # Core Social Entities
-type Post @entity(immutable: true) {
+type Post @entity(immutable: false) {
   id: Bytes! # ContentCoin contract address
   creator: User!
   content: String!
