@@ -68,9 +68,9 @@ function populateIPFSFields(post: Post, contentURI: string): void {
   }
 }
 
-// Handle ZoraFactory CoinCreatedV4 events (new posts/coins created)
+// Handle ZoraFactory CoinCreated events (new posts/coins created)
 export function handleCoinCreatedV4(event: CoinCreatedV4): void {
-  log.info("CoinCreatedV4 event: caller={}, coin={}, name={}", [
+  log.info("CoinCreated event: caller={}, coin={}, name={}", [
     event.params.caller.toHexString(),
     event.params.coin.toHexString(),
     event.params.name
