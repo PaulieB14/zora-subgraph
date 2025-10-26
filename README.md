@@ -63,21 +63,31 @@ graph codegen
 graph build
 
 # Deploy to Studio
-graph deploy --version-label v1.0.2 zora
+graph deploy --version-label v2.6.0 zora
 ```
 
 ## 📈 Query Examples
 
-### Get All Posts
+### Get All Posts with IPFS Content
 ```graphql
 {
-  posts(first: 10) {
+  posts(first: 10, orderBy: createdAt, orderDirection: desc) {
     id
     creator
     content
+    contentURI
+    name
+    symbol
     totalSupply
     totalMints
+    totalHolders
     createdAt
+    # IPFS Content Fields
+    ipfsHash
+    ipfsDescription
+    ipfsImage
+    ipfsExternalUrl
+    ipfsContentType
   }
 }
 ```
@@ -89,21 +99,31 @@ graph deploy --version-label v1.0.2 zora
     id
     totalPosts
     totalMints
+    totalTransfers
+    totalSwaps
+    totalRewards
     posts {
       content
+      contentURI
       totalSupply
+      ipfsDescription
+      ipfsImage
     }
   }
 }
 ```
 
-### Get Recent Activity
+### Get Recent Activity with IPFS Content
 ```graphql
 {
   mints(first: 10, orderBy: timestamp, orderDirection: desc) {
     id
     post {
       content
+      contentURI
+      ipfsDescription
+      ipfsImage
+      creator
     }
     minter
     amount
@@ -112,10 +132,27 @@ graph deploy --version-label v1.0.2 zora
 }
 ```
 
+### Query Posts by IPFS Content
+```graphql
+{
+  posts(where: { ipfsDescription_contains: "NFT" }, first: 5) {
+    id
+    name
+    contentURI
+    ipfsHash
+    ipfsDescription
+    ipfsImage
+    ipfsExternalUrl
+    creator
+    totalMints
+  }
+}
+```
+
 ## 🔗 Live Endpoints
 
 - **Studio URL**: https://thegraph.com/studio/subgraph/zora
-- **Query Endpoint**: https://api.studio.thegraph.com/query/111767/zora/v1.0.2
+- **Query Endpoint**: https://api.studio.thegraph.com/query/111767/zora/v2.6.0
 - **GitHub**: https://github.com/PaulieB14/zora-subgraph
 
 ## ⚡ Performance Optimizations
@@ -159,18 +196,133 @@ Edit `subgraph.yaml` and update the `address` field for the relevant data source
 
 ## 📊 Schema Overview
 
-### Core Entities
-- **Post**: ContentCoins representing social posts
-- **User**: Creator and user profiles
-- **CreatorCoin**: Creator-specific coins
-- **Mint**: Minting events (likes)
-- **Transfer**: Token transfers
-- **Swap**: Trading activity
-- **Reward**: Reward distributions
+### Entity Relationship Diagram
 
-### Metrics
-- **PostMetrics**: Timeseries data for analytics
-- **PostStats**: Aggregated statistics
+```mermaid
+erDiagram
+    User {
+        Bytes id "User address"
+        BigInt totalPosts "Total posts created"
+        BigInt totalMints "Total likes given"
+        BigInt totalTransfers "Total transfers made"
+        BigInt totalSwaps "Total trading activity"
+        BigInt totalRewards "Total rewards earned"
+    }
+    
+    Post {
+        Bytes id "ContentCoin contract address"
+        String content "Post content"
+        String contentURI "IPFS URI"
+        String name "Post name"
+        String symbol "Post symbol"
+        BigInt createdAt "Creation timestamp"
+        BigInt totalSupply "Total token supply"
+        BigInt totalMints "Total likes"
+        BigInt totalTransfers "Total transfers"
+        BigInt totalSwaps "Total swaps"
+        BigInt totalHolders "Unique holders"
+        String ipfsHash "IPFS hash"
+        String ipfsGatewayURL "IPFS gateway URL"
+        String ipfsContentType "Content type"
+        String ipfsMetadata "Raw IPFS metadata"
+        String ipfsDescription "Parsed description"
+        String ipfsImage "Parsed image URL"
+        String ipfsExternalUrl "External URL"
+        String ipfsAttributes "Parsed attributes"
+    }
+    
+    ContentCoin {
+        Bytes id "ContentCoin contract address"
+        String name "Coin name"
+        String symbol "Coin symbol"
+        BigInt totalSupply "Total supply"
+        BigInt totalMints "Total mints"
+        BigInt totalTransfers "Total transfers"
+        BigInt createdAt "Creation timestamp"
+    }
+    
+    CreatorCoin {
+        Bytes id "Creator address"
+        String name "Creator coin name"
+        String symbol "Creator coin symbol"
+        BigInt totalSupply "Total supply"
+        BigInt totalHolders "Total holders"
+    }
+    
+    Mint {
+        Bytes id "Transaction hash + log index"
+        BigInt amount "Mint amount"
+        BigInt timestamp "Mint timestamp"
+        BigInt blockNumber "Block number"
+        Bytes transactionHash "Transaction hash"
+    }
+    
+    Transfer {
+        Bytes id "Transaction hash + log index"
+        BigInt amount "Transfer amount"
+        BigInt timestamp "Transfer timestamp"
+        BigInt blockNumber "Block number"
+        Bytes transactionHash "Transaction hash"
+    }
+    
+    Swap {
+        Bytes id "Transaction hash + log index"
+        BigInt amountIn "Input amount"
+        BigInt amountOut "Output amount"
+        BigInt timestamp "Swap timestamp"
+        BigInt blockNumber "Block number"
+        Bytes transactionHash "Transaction hash"
+    }
+    
+    Reward {
+        Bytes id "Transaction hash + log index"
+        BigInt amount "Reward amount"
+        String rewardType "Reward type"
+        BigInt timestamp "Reward timestamp"
+        BigInt blockNumber "Block number"
+        Bytes transactionHash "Transaction hash"
+    }
+    
+    %% Core Relationships
+    User ||--o{ Post : "creates"
+    User ||--o| CreatorCoin : "owns"
+    User ||--o{ Mint : "mints"
+    User ||--o{ Transfer : "from/to"
+    User ||--o{ Swap : "performs"
+    User ||--o{ Reward : "receives"
+    
+    %% Post Relationships
+    Post ||--o| ContentCoin : "has"
+    Post ||--o{ Mint : "receives"
+    Post ||--o{ Transfer : "involves"
+    Post ||--o{ Swap : "traded"
+    Post ||--o{ Reward : "generates"
+    
+    %% ContentCoin Relationships
+    ContentCoin ||--o{ Mint : "minted"
+    ContentCoin ||--o{ Transfer : "transferred"
+    
+    %% CreatorCoin Relationships
+    CreatorCoin ||--o{ Swap : "swapped"
+    CreatorCoin ||--o{ Reward : "rewards"
+```
+
+### Core Entities
+- **Post**: ContentCoins representing social posts with IPFS content
+- **User**: Creator and user profiles with engagement metrics
+- **CreatorCoin**: Creator-specific coins for trading
+- **ContentCoin**: Token contracts for individual posts
+- **Mint**: Minting events (likes/engagement)
+- **Transfer**: Token transfers between users
+- **Swap**: Trading activity with creator coins
+- **Reward**: Reward distributions to creators
+
+### IPFS Integration
+The schema now includes comprehensive IPFS support:
+- **Content Fetching**: Automatic IPFS content retrieval
+- **Metadata Parsing**: JSON metadata extraction
+- **Field Mapping**: Common fields like description, image, external URL
+- **Gateway Support**: Multiple IPFS gateway redundancy
 
 ## 🤝 Contributing
 
