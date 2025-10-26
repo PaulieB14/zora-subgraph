@@ -27,7 +27,16 @@ import { ContentCoinTemplate, CreatorCoinTemplate } from "../generated/templates
 
 // Helper function to create unique IDs
 function createId(prefix: string, hash: Bytes, logIndex: BigInt): Bytes {
-  return Bytes.fromHexString(prefix + hash.toHexString().slice(2) + logIndex.toHexString().slice(2))
+  let hashStr = hash.toHexString().slice(2) // Remove 0x prefix
+  let logStr = logIndex.toHexString().slice(2) // Remove 0x prefix
+  
+  // Ensure even length by padding with 0 if needed
+  if (logStr.length % 2 !== 0) {
+    logStr = "0" + logStr
+  }
+  
+  let combined = prefix + hashStr + logStr
+  return Bytes.fromHexString(combined)
 }
 
 // Handle ZoraFactory CoinCreatedV4 events (new posts/coins created)
