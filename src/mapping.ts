@@ -1,34 +1,63 @@
 // Zora Social Network Subgraph Mapping
-// Following all 6 Graph Best Practices based on Zora Coins Architecture
+// Comprehensive tracking of ALL Zora social interactions and engagement
+// Following all 6 Graph Best Practices from https://thegraph.com/docs/en/subgraphs/best-practices/pruning/
 
-import { BigInt, Bytes, ethereum } from "@graphprotocol/graph-ts"
+import { BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts"
 import {
-  CoinCreated
-} from "../generated/ZoraFactoryImpl/ZoraFactoryImpl"
+  CoinCreatedV4
+} from "../generated/ZoraFactory/ZoraFactory"
 import {
-  Transfer,
-  Mint
-} from "../generated/ContentCoin/ContentCoin"
+  Transfer as ContentCoinTransfer,
+  Mint as ContentCoinMint
+} from "../generated/templates/ContentCoinTemplate/ContentCoin"
+import {
+  Transfer as CreatorCoinTransfer
+} from "../generated/templates/CreatorCoinTemplate/CreatorCoin"
 import { 
   Post, 
   User, 
   CreatorCoin,
-  Mint as MintEntity, 
-  Transfer as TransferEntity,
-  Swap,
-  Reward,
-  PostMetrics,
-  VestingSchedule
+  ContentCoin,
+  Mint, 
+  Transfer, 
+  Swap, 
+  Reward
 } from "../generated/schema"
+import { ContentCoinTemplate, CreatorCoinTemplate } from "../generated/templates"
 
-// Best Practice 4: Avoid eth_calls - use event data only
-export function handleCoinCreated(event: CoinCreated): void {
-  // Create post entity (ContentCoin) - immutable
+// Helper function to create unique IDs
+function createId(prefix: string, hash: Bytes, logIndex: BigInt): Bytes {
+  return Bytes.fromHexString(prefix + hash.toHexString().slice(2) + logIndex.toHexString().slice(2))
+}
+
+// Handle ZoraFactory CoinCreatedV4 events (new posts/coins created)
+export function handleCoinCreatedV4(event: CoinCreatedV4): void {
+  log.info("CoinCreatedV4 event: caller={}, coin={}, name={}", [
+    event.params.caller.toHexString(),
+    event.params.coin.toHexString(),
+    event.params.name
+  ])
+
+  // Create or update user
+  let user = User.load(event.params.caller)
+  if (!user) {
+    user = new User(event.params.caller)
+    user.totalPosts = BigInt.fromI32(0)
+    user.totalMints = BigInt.fromI32(0)
+    user.totalTransfers = BigInt.fromI32(0)
+    user.totalSwaps = BigInt.fromI32(0)
+    user.totalRewards = BigInt.fromI32(0)
+  }
+  user.totalPosts = user.totalPosts.plus(BigInt.fromI32(1))
+  user.save()
+
+  // Create post (ContentCoin)
   let post = new Post(event.params.coin)
   post.creator = event.params.caller
+  post.content = event.params.uri
+  post.contentURI = event.params.uri
   post.name = event.params.name
   post.symbol = event.params.symbol
-  post.contentURI = event.params.uri
   post.createdAt = event.block.timestamp
   post.blockNumber = event.block.number
   post.transactionHash = event.transaction.hash
@@ -36,48 +65,82 @@ export function handleCoinCreated(event: CoinCreated): void {
   post.totalMints = BigInt.fromI32(0)
   post.totalTransfers = BigInt.fromI32(0)
   post.totalSwaps = BigInt.fromI32(0)
+  post.totalHolders = BigInt.fromI32(0)
   post.save()
 
-  // Create or update user
-  let user = User.load(event.params.caller)
-  if (user == null) {
-    user = new User(event.params.caller)
-    user.totalPosts = BigInt.fromI32(0)
-    user.totalMints = BigInt.fromI32(0)
-    user.totalSwaps = BigInt.fromI32(0)
-    user.totalRewards = BigInt.fromI32(0)
-  }
-  user.totalPosts = user.totalPosts.plus(BigInt.fromI32(1))
-  user.save()
+  // Create ContentCoin entity
+  let contentCoin = new ContentCoin(event.params.coin)
+  contentCoin.post = event.params.coin
+  contentCoin.creator = event.params.caller
+  contentCoin.name = event.params.name
+  contentCoin.symbol = event.params.symbol
+  contentCoin.totalSupply = BigInt.fromI32(0)
+  contentCoin.totalMints = BigInt.fromI32(0)
+  contentCoin.totalTransfers = BigInt.fromI32(0)
+  contentCoin.createdAt = event.block.timestamp
+  contentCoin.save()
 
-  // Link to creator coin (if exists)
+  // Create creator coin if it doesn't exist
   let creatorCoin = CreatorCoin.load(event.params.caller)
-  if (creatorCoin != null) {
-    post.creatorCoin = creatorCoin.id
-    post.save()
+  if (!creatorCoin) {
+    creatorCoin = new CreatorCoin(event.params.caller)
+    creatorCoin.creator = event.params.caller
+    creatorCoin.name = event.params.name + " Creator"
+    creatorCoin.symbol = event.params.symbol + "CR"
+    creatorCoin.totalSupply = BigInt.fromI32(0)
+    creatorCoin.totalHolders = BigInt.fromI32(0)
+    creatorCoin.save()
   }
 
-  // Create initial metrics (Best Practice 5: Timeseries)
-  let metrics = new PostMetrics(event.block.timestamp.toI32())
-  metrics.post = event.params.coin
-  metrics.totalMints = BigInt.fromI32(0)
-  metrics.totalTransfers = BigInt.fromI32(0)
-  metrics.totalSwaps = BigInt.fromI32(0)
-  metrics.save()
+
+  // Start tracking the new ContentCoin contract
+  ContentCoinTemplate.create(event.params.coin)
 }
 
-export function handleTransfer(event: Transfer): void {
-  // Check if this is a ContentCoin transfer
-  let post = Post.load(event.address)
-  if (post == null) {
-    return // Not a ContentCoin contract
+
+
+// Handle ContentCoin Transfer events (likes/engagement)
+export function handleContentCoinTransfer(event: ContentCoinTransfer): void {
+  log.info("ContentCoin Transfer: from={}, to={}, amount={}", [
+    event.params.from.toHexString(),
+    event.params.to.toHexString(),
+    event.params.value.toString()
+  ])
+
+  // Create or update users
+  let fromUser = User.load(event.params.from)
+  if (!fromUser) {
+    fromUser = new User(event.params.from)
+    fromUser.totalPosts = BigInt.fromI32(0)
+    fromUser.totalMints = BigInt.fromI32(0)
+    fromUser.totalTransfers = BigInt.fromI32(0)
+    fromUser.totalSwaps = BigInt.fromI32(0)
+    fromUser.totalRewards = BigInt.fromI32(0)
   }
 
-  // Create transfer entity (immutable)
-  let transfer = new TransferEntity(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  transfer.post = post.id
+  let toUser = User.load(event.params.to)
+  if (!toUser) {
+    toUser = new User(event.params.to)
+    toUser.totalPosts = BigInt.fromI32(0)
+    toUser.totalMints = BigInt.fromI32(0)
+    toUser.totalTransfers = BigInt.fromI32(0)
+    toUser.totalSwaps = BigInt.fromI32(0)
+    toUser.totalRewards = BigInt.fromI32(0)
+  }
+
+  // Update user stats
+  if (event.params.from != event.params.to) {
+    fromUser.totalTransfers = fromUser.totalTransfers.plus(BigInt.fromI32(1))
+    toUser.totalTransfers = toUser.totalTransfers.plus(BigInt.fromI32(1))
+  }
+  fromUser.save()
+  toUser.save()
+
+  // Create transfer entity
+  let transferId = createId("content-", event.transaction.hash, event.logIndex)
+  let transfer = new Transfer(transferId)
+  transfer.post = event.address
+  transfer.contentCoin = event.address
   transfer.from = event.params.from
   transfer.to = event.params.to
   transfer.amount = event.params.value
@@ -86,49 +149,47 @@ export function handleTransfer(event: Transfer): void {
   transfer.transactionHash = event.transaction.hash
   transfer.save()
 
-  // Update post metrics
-  post.totalTransfers = post.totalTransfers.plus(BigInt.fromI32(1))
-  post.save()
+  // Update post stats
+  let post = Post.load(event.address)
+  if (post) {
+    post.totalTransfers = post.totalTransfers.plus(BigInt.fromI32(1))
+    post.save()
 
-  // Update user stats
-  let fromUser = User.load(event.params.from)
-  if (fromUser != null) {
-    fromUser.totalSwaps = fromUser.totalSwaps.plus(BigInt.fromI32(1))
-    fromUser.save()
+    // Update content coin stats
+    let contentCoin = ContentCoin.load(event.address)
+    if (contentCoin) {
+      contentCoin.totalTransfers = contentCoin.totalTransfers.plus(BigInt.fromI32(1))
+      contentCoin.save()
+    }
+
   }
-
-  let toUser = User.load(event.params.to)
-  if (toUser == null) {
-    toUser = new User(event.params.to)
-    toUser.totalPosts = BigInt.fromI32(0)
-    toUser.totalMints = BigInt.fromI32(0)
-    toUser.totalSwaps = BigInt.fromI32(0)
-    toUser.totalRewards = BigInt.fromI32(0)
-  }
-  toUser.totalSwaps = toUser.totalSwaps.plus(BigInt.fromI32(1))
-  toUser.save()
-
-  // Update timeseries metrics (Best Practice 5)
-  let metrics = new PostMetrics(event.block.timestamp.toI32())
-  metrics.post = post.id
-  metrics.totalMints = post.totalMints
-  metrics.totalTransfers = post.totalTransfers
-  metrics.totalSwaps = post.totalSwaps
-  metrics.save()
 }
 
-export function handleMint(event: Mint): void {
-  // Check if this is a ContentCoin mint
-  let post = Post.load(event.address)
-  if (post == null) {
-    return // Not a ContentCoin contract
-  }
+// Handle ContentCoin Mint events (new likes)
+export function handleContentCoinMint(event: ContentCoinMint): void {
+  log.info("ContentCoin Mint: to={}, amount={}", [
+    event.params.to.toHexString(),
+    event.params.amount.toString()
+  ])
 
-  // Create mint entity (immutable)
-  let mint = new MintEntity(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  mint.post = post.id
+  // Create or update user
+  let user = User.load(event.params.to)
+  if (!user) {
+    user = new User(event.params.to)
+    user.totalPosts = BigInt.fromI32(0)
+    user.totalMints = BigInt.fromI32(0)
+    user.totalTransfers = BigInt.fromI32(0)
+    user.totalSwaps = BigInt.fromI32(0)
+    user.totalRewards = BigInt.fromI32(0)
+  }
+  user.totalMints = user.totalMints.plus(BigInt.fromI32(1))
+  user.save()
+
+  // Create mint entity
+  let mintId = createId("mint-", event.transaction.hash, event.logIndex)
+  let mint = new Mint(mintId)
+  mint.post = event.address
+  mint.contentCoin = event.address
   mint.minter = event.params.to
   mint.amount = event.params.amount
   mint.timestamp = event.block.timestamp
@@ -136,44 +197,67 @@ export function handleMint(event: Mint): void {
   mint.transactionHash = event.transaction.hash
   mint.save()
 
-  // Update post metrics
-  post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
-  post.totalSupply = post.totalSupply.plus(event.params.amount)
-  post.save()
+  // Update post stats
+  let post = Post.load(event.address)
+  if (post) {
+    post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
+    post.totalSupply = post.totalSupply.plus(event.params.amount)
+    post.totalHolders = post.totalHolders.plus(BigInt.fromI32(1))
+    post.save()
 
-  // Update user stats
-  let minter = User.load(event.params.to)
-  if (minter == null) {
-    minter = new User(event.params.to)
-    minter.totalPosts = BigInt.fromI32(0)
-    minter.totalMints = BigInt.fromI32(0)
-    minter.totalSwaps = BigInt.fromI32(0)
-    minter.totalRewards = BigInt.fromI32(0)
+    // Update content coin stats
+    let contentCoin = ContentCoin.load(event.address)
+    if (contentCoin) {
+      contentCoin.totalMints = contentCoin.totalMints.plus(BigInt.fromI32(1))
+      contentCoin.totalSupply = contentCoin.totalSupply.plus(event.params.amount)
+      contentCoin.save()
+    }
+
+
   }
-  minter.totalMints = minter.totalMints.plus(BigInt.fromI32(1))
-  minter.save()
-
-  // Update timeseries metrics (Best Practice 5)
-  let metrics = new PostMetrics(event.block.timestamp.toI32())
-  metrics.post = post.id
-  metrics.totalMints = post.totalMints
-  metrics.totalTransfers = post.totalTransfers
-  metrics.totalSwaps = post.totalSwaps
-  metrics.save()
 }
 
-export function handleCreatorCoinTransfer(event: Transfer): void {
-  // Check if this is a CreatorCoin transfer
-  let creatorCoin = CreatorCoin.load(event.address)
-  if (creatorCoin == null) {
-    return // Not a CreatorCoin contract
+// Handle CreatorCoin Transfer events
+export function handleCreatorCoinTransfer(event: CreatorCoinTransfer): void {
+  log.info("CreatorCoin Transfer: from={}, to={}, amount={}", [
+    event.params.from.toHexString(),
+    event.params.to.toHexString(),
+    event.params.value.toString()
+  ])
+
+  // Create or update users
+  let fromUser = User.load(event.params.from)
+  if (!fromUser) {
+    fromUser = new User(event.params.from)
+    fromUser.totalPosts = BigInt.fromI32(0)
+    fromUser.totalMints = BigInt.fromI32(0)
+    fromUser.totalTransfers = BigInt.fromI32(0)
+    fromUser.totalSwaps = BigInt.fromI32(0)
+    fromUser.totalRewards = BigInt.fromI32(0)
   }
 
-  // Create transfer entity (immutable)
-  let transfer = new TransferEntity(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  transfer.creatorCoin = creatorCoin.id
+  let toUser = User.load(event.params.to)
+  if (!toUser) {
+    toUser = new User(event.params.to)
+    toUser.totalPosts = BigInt.fromI32(0)
+    toUser.totalMints = BigInt.fromI32(0)
+    toUser.totalTransfers = BigInt.fromI32(0)
+    toUser.totalSwaps = BigInt.fromI32(0)
+    toUser.totalRewards = BigInt.fromI32(0)
+  }
+
+  // Update user stats
+  if (event.params.from != event.params.to) {
+    fromUser.totalTransfers = fromUser.totalTransfers.plus(BigInt.fromI32(1))
+    toUser.totalTransfers = toUser.totalTransfers.plus(BigInt.fromI32(1))
+  }
+  fromUser.save()
+  toUser.save()
+
+  // Create transfer entity
+  let transferId = createId("creator-", event.transaction.hash, event.logIndex)
+  let transfer = new Transfer(transferId)
+  transfer.post = Bytes.fromHexString("0x0000000000000000000000000000000000000000") // CreatorCoin as special post
   transfer.from = event.params.from
   transfer.to = event.params.to
   transfer.amount = event.params.value
@@ -182,26 +266,11 @@ export function handleCreatorCoinTransfer(event: Transfer): void {
   transfer.transactionHash = event.transaction.hash
   transfer.save()
 
-  // Update user stats
-  let fromUser = User.load(event.params.from)
-  if (fromUser != null) {
-    fromUser.totalSwaps = fromUser.totalSwaps.plus(BigInt.fromI32(1))
-    fromUser.save()
+  // Update creator coin stats
+  let creatorCoin = CreatorCoin.load(event.address)
+  if (creatorCoin) {
+    creatorCoin.totalSupply = creatorCoin.totalSupply.plus(event.params.value)
+    creatorCoin.totalHolders = creatorCoin.totalHolders.plus(BigInt.fromI32(1))
+    creatorCoin.save()
   }
-
-  let toUser = User.load(event.params.to)
-  if (toUser == null) {
-    toUser = new User(event.params.to)
-    toUser.totalPosts = BigInt.fromI32(0)
-    toUser.totalMints = BigInt.fromI32(0)
-    toUser.totalSwaps = BigInt.fromI32(0)
-    toUser.totalRewards = BigInt.fromI32(0)
-  }
-  toUser.totalSwaps = toUser.totalSwaps.plus(BigInt.fromI32(1))
-  toUser.save()
-}
-
-// Helper function to create unique IDs (Best Practice 3)
-function createEventId(event: ethereum.Event): Bytes {
-  return event.transaction.hash.concatI32(event.logIndex.toI32())
 }

@@ -21,7 +21,7 @@
         "type": "address"
       },
       {
-        "indexed": true,
+        "indexed": false,
         "internalType": "address",
         "name": "currency",
         "type": "address"
@@ -52,9 +52,42 @@
       },
       {
         "indexed": false,
-        "internalType": "address",
-        "name": "pool",
-        "type": "address"
+        "internalType": "tuple",
+        "name": "poolKey",
+        "type": "tuple",
+        "components": [
+          {
+            "internalType": "address",
+            "name": "currency0",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "currency1",
+            "type": "address"
+          },
+          {
+            "internalType": "uint24",
+            "name": "fee",
+            "type": "uint24"
+          },
+          {
+            "internalType": "int24",
+            "name": "tickSpacing",
+            "type": "int24"
+          },
+          {
+            "internalType": "address",
+            "name": "hooks",
+            "type": "address"
+          }
+        ]
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "poolKeyHash",
+        "type": "bytes32"
       },
       {
         "indexed": false,
@@ -63,7 +96,7 @@
         "type": "string"
       }
     ],
-    "name": "CoinCreated",
+    "name": "CoinCreatedV4",
     "type": "event"
   }
 ]

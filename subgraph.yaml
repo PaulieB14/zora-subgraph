@@ -5,12 +5,12 @@ indexerHints:
   prune: auto  # Best Practice 1: Improve Query Speed with Pruning
 dataSources:
   - kind: ethereum/contract
-    name: ZoraFactoryImpl
+    name: ZoraFactory
     network: base
     source:
       address: "0x777777751622c0d3258f214F9DF38E35BF45baF3"  # Real Zora Factory on Base
-      abi: ZoraFactoryImpl
-      startBlock: 10000000  # Start from recent Base block
+      abi: ZoraFactory
+      startBlock: 37327140
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -25,19 +25,23 @@ dataSources:
         - Swap
         - Reward
         - PostMetrics
+        - UserMetrics
       abis:
-        - name: ZoraFactoryImpl
-          file: ./abis/ZoraFactoryImpl.json
+        - name: ZoraFactory
+          file: ./abis/ZoraFactory.json
+        - name: ZORAToken
+          file: ./abis/ZORAToken.json
         - name: ContentCoin
           file: ./abis/ContentCoin.json
         - name: CreatorCoin
           file: ./abis/CreatorCoin.json
       eventHandlers:
-        - event: CoinCreated(indexed address,indexed address,indexed address,indexed address,string,string,string,address,address,string)
-          handler: handleCoinCreated
+        - event: CoinCreatedV4(indexed address,indexed address,indexed address,address,string,string,string,address,tuple,bytes32,string)
+          handler: handleCoinCreatedV4
       file: ./src/mapping.ts
+templates:
   - kind: ethereum/contract
-    name: ContentCoin
+    name: ContentCoinTemplate
     network: base
     source:
       abi: ContentCoin
@@ -48,6 +52,7 @@ dataSources:
       entities:
         - Post
         - User
+        - ContentCoin
         - Mint
         - Transfer
         - PostMetrics
@@ -56,12 +61,12 @@ dataSources:
           file: ./abis/ContentCoin.json
       eventHandlers:
         - event: Transfer(indexed address,indexed address,uint256)
-          handler: handleTransfer
+          handler: handleContentCoinTransfer
         - event: Mint(indexed address,uint256)
-          handler: handleMint
+          handler: handleContentCoinMint
       file: ./src/mapping.ts
   - kind: ethereum/contract
-    name: CreatorCoin
+    name: CreatorCoinTemplate
     network: base
     source:
       abi: CreatorCoin
@@ -70,10 +75,12 @@ dataSources:
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
-        - CreatorCoin
         - User
+        - CreatorCoin
         - Transfer
+        - Swap
         - Reward
+        - UserMetrics
       abis:
         - name: CreatorCoin
           file: ./abis/CreatorCoin.json
