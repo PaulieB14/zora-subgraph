@@ -1,0 +1,20 @@
+{
+  "name": "zora-social-subgraph",
+  "version": "1.0.0",
+  "description": "Zora Social Network Subgraph for Base Chain - Following all 6 Graph Best Practices",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy": "graph deploy --studio zora",
+    "create-local": "graph create --node http://localhost:8020/ zora",
+    "remove-local": "graph remove --node http://localhost:8020/ zora",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 zora"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli": "0.98.1",
+    "@graphprotocol/graph-ts": "0.31.0"
+  },
+  "devDependencies": {
+    "matchstick-as": "0.5.0"
+  }
+}

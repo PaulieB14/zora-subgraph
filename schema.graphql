@@ -1,0 +1,136 @@
+# Zora Social Network Subgraph Schema
+# Following all 6 Graph Best Practices based on Zora Coins Architecture
+
+# Best Practice 3: Use Immutable Entities and Bytes as IDs
+type Post @entity(immutable: true) {
+  id: Bytes! # ContentCoin contract address - immutable
+  creator: User!
+  creatorCoin: CreatorCoin!
+  content: String!
+  contentURI: String!
+  name: String!
+  symbol: String!
+  createdAt: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+  
+  # Social engagement metrics
+  totalSupply: BigInt!
+  totalMints: BigInt!
+  totalTransfers: BigInt!
+  totalSwaps: BigInt!
+  
+  # Best Practice 2: Use @derivedFrom for relationships
+  mints: [Mint!]! @derivedFrom(field: "post")
+  transfers: [Transfer!]! @derivedFrom(field: "post")
+  swaps: [Swap!]! @derivedFrom(field: "post")
+  rewards: [Reward!]! @derivedFrom(field: "post")
+}
+
+type CreatorCoin @entity(immutable: true) {
+  id: Bytes! # CreatorCoin contract address - immutable
+  creator: User!
+  name: String!
+  symbol: String!
+  totalSupply: BigInt!
+  vestingSchedule: VestingSchedule
+  
+  # Content coins created by this creator
+  contentCoins: [Post!]! @derivedFrom(field: "creatorCoin")
+  
+  # Trading activity
+  transfers: [Transfer!]! @derivedFrom(field: "creatorCoin")
+  rewards: [Reward!]! @derivedFrom(field: "creatorCoin")
+}
+
+type User @entity(immutable: false) {
+  id: Bytes! # User address
+  totalPosts: BigInt!
+  totalMints: BigInt!
+  totalSwaps: BigInt!
+  totalRewards: BigInt!
+  
+  # Best Practice 2: Use @derivedFrom for relationships
+  posts: [Post!]! @derivedFrom(field: "creator")
+  creatorCoin: CreatorCoin @derivedFrom(field: "creator")
+  mints: [Mint!]! @derivedFrom(field: "minter")
+  transfers: [Transfer!]! @derivedFrom(field: "from")
+  swaps: [Swap!]! @derivedFrom(field: "user")
+  rewards: [Reward!]! @derivedFrom(field: "recipient")
+}
+
+# Best Practice 3: Immutable entities for events
+type Mint @entity(immutable: true) {
+  id: Bytes! # transaction hash + log index - immutable
+  post: Post!
+  minter: User!
+  amount: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type Transfer @entity(immutable: true) {
+  id: Bytes! # transaction hash + log index - immutable
+  post: Post
+  creatorCoin: CreatorCoin
+  from: User!
+  to: User!
+  amount: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type Swap @entity(immutable: true) {
+  id: Bytes! # transaction hash + log index - immutable
+  post: Post!
+  user: User!
+  amountIn: BigInt!
+  amountOut: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type Reward @entity(immutable: true) {
+  id: Bytes! # transaction hash + log index - immutable
+  post: Post!
+  creatorCoin: CreatorCoin!
+  recipient: User!
+  amount: BigInt!
+  rewardType: String! # "creator", "platform", "referral", "protocol", "doppler"
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type VestingSchedule @entity(immutable: true) {
+  id: Bytes! # CreatorCoin address - immutable
+  creatorCoin: CreatorCoin!
+  totalAmount: BigInt!
+  vestingPeriod: BigInt!
+  startTime: BigInt!
+  endTime: BigInt!
+  claimedAmount: BigInt!
+}
+
+# Best Practice 5: Timeseries for analytics
+type PostMetrics @entity(timeseries: true) {
+  id: Int8! # Auto-incremented ID
+  timestamp: Timestamp! # Auto-set to block timestamp
+  post: Bytes! # Post ID
+  totalMints: BigInt!
+  totalTransfers: BigInt!
+  totalSwaps: BigInt!
+}
+
+# Best Practice 5: Aggregations for performance
+type PostStats @aggregation(intervals: ["hour", "day"], source: "PostMetrics") {
+  id: Int8! # Auto-generated ID
+  timestamp: Timestamp! # Start of aggregation interval
+  post: Bytes! # Post ID
+  totalMints: BigInt! @aggregate(fn: "sum", arg: "totalMints")
+  totalTransfers: BigInt! @aggregate(fn: "sum", arg: "totalTransfers")
+  totalSwaps: BigInt! @aggregate(fn: "sum", arg: "totalSwaps")
+}
