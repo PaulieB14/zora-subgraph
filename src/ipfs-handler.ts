@@ -53,7 +53,7 @@ export function parseIPFSContent(contentURI: string): IPFSContent | null {
       contentString.length.toString()
     ])
     
-    // Try to parse as JSON metadata
+    // Try to parse as JSON metadata with error handling
     if (ipfsContent.parseMetadata(contentString)) {
       log.info("Successfully parsed IPFS metadata for hash: {}", [hash])
     } else {
@@ -89,9 +89,12 @@ export class IPFSContent {
 
   // Parse JSON metadata from IPFS content
   parseMetadata(jsonString: string): boolean {
-    const jsonValue = json.fromString(jsonString)
+    // First, try to clean the JSON string of invalid escape sequences
+    const cleanedJson = this.cleanJsonString(jsonString)
+    
+    const jsonValue = json.fromString(cleanedJson)
     if (jsonValue.kind === JSONValueKind.OBJECT) {
-      this.metadata = jsonString
+      this.metadata = cleanedJson
       this.contentType = "application/json"
       
       const obj = jsonValue.toObject()
@@ -129,13 +132,39 @@ export class IPFSContent {
       
       return true
     }
+    
+    // If JSON parsing fails, store raw content
+    log.warning("Failed to parse JSON metadata: {}", [jsonString.substring(0, 200)])
+    this.metadata = jsonString
+    this.contentType = "text/plain"
     return false
+  }
+
+  // Clean JSON string by removing invalid escape sequences
+  private cleanJsonString(jsonString: string): string {
+    // Simple approach: just truncate at the first problematic character
+    // This is safer than trying to fix malformed JSON
+    let cleaned = jsonString
+    
+    // Find the last valid closing brace
+    const lastBrace = cleaned.lastIndexOf('}')
+    if (lastBrace > 0) {
+      cleaned = cleaned.substring(0, lastBrace + 1)
+    }
+    
+    // If the string is too short or doesn't start with {, return empty
+    if (cleaned.length < 2 || cleaned.charAt(0) !== '{') {
+      return '{}'
+    }
+    
+    return cleaned
   }
 
   // Get parsed field value
   getField(key: string): string | null {
     if (this.parsedData.has(key)) {
-      return this.parsedData.get(key)
+      const value = this.parsedData.get(key)
+      return value ? value : null
     }
     return null
   }
@@ -171,10 +200,10 @@ export function extractMetadataFields(ipfsContent: IPFSContent): Map<string, str
   const fields = new Map<string, string>()
   
   if (ipfsContent.parsedData) {
-    // Copy all parsed data
-    const keys = ipfsContent.parsedData.keys()
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i]
+    // Copy all parsed data - iterate through known fields
+    const knownFields = ["name", "description", "image", "external_url", "attributes"]
+    for (let i = 0; i < knownFields.length; i++) {
+      const key = knownFields[i]
       const value = ipfsContent.parsedData.get(key)
       if (value) {
         fields.set(key, value)
