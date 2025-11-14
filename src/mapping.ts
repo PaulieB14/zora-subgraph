@@ -27,17 +27,20 @@ import { ContentCoinTemplate, CreatorCoinTemplate } from "../generated/templates
 import { processIPFSContent, extractMetadataFields, IPFSContent } from "./ipfs-handler"
 
 // Helper function to create unique IDs
+// Uses transaction hash + log index to create unique IDs
 function createId(prefix: string, hash: Bytes, logIndex: BigInt): Bytes {
-  let hashStr = hash.toHexString().slice(2) // Remove 0x prefix
-  let logStr = logIndex.toHexString().slice(2) // Remove 0x prefix
-  
-  // Ensure even length by padding with 0 if needed
-  if (logStr.length % 2 !== 0) {
-    logStr = "0" + logStr
+  // Convert logIndex to Bytes, ensuring it's properly padded
+  let logIndexHex = logIndex.toHexString()
+  // Remove 0x prefix and ensure even length
+  let logIndexStr = logIndexHex.slice(2)
+  if (logIndexStr.length % 2 !== 0) {
+    logIndexStr = "0" + logIndexStr
   }
+  let logIndexBytes = Bytes.fromHexString("0x" + logIndexStr)
   
-  let combined = prefix + hashStr + logStr
-  return Bytes.fromHexString(combined)
+  // Concatenate hash and logIndex using Bytes.concat
+  // The prefix is just for logging/debugging, not part of the actual ID
+  return hash.concat(logIndexBytes)
 }
 
 // Helper function to populate IPFS fields in Post entity
@@ -149,15 +152,20 @@ export function handleContentCoinTransfer(event: ContentCoinTransfer): void {
     event.params.value.toString()
   ])
 
+  // Check if this is a mint (Transfer from zero address)
+  let zeroAddress = Bytes.fromHexString("0x0000000000000000000000000000000000000000")
+  let isMint = event.params.from.equals(zeroAddress)
+
   // Create or update users
   let fromUser = User.load(event.params.from)
-  if (!fromUser) {
+  if (!fromUser && !isMint) {
     fromUser = new User(event.params.from)
     fromUser.totalPosts = BigInt.fromI32(0)
     fromUser.totalMints = BigInt.fromI32(0)
     fromUser.totalTransfers = BigInt.fromI32(0)
     fromUser.totalSwaps = BigInt.fromI32(0)
     fromUser.totalRewards = BigInt.fromI32(0)
+    fromUser.save()
   }
 
   let toUser = User.load(event.params.to)
@@ -170,46 +178,91 @@ export function handleContentCoinTransfer(event: ContentCoinTransfer): void {
     toUser.totalRewards = BigInt.fromI32(0)
   }
 
-  // Update user stats
-  if (event.params.from != event.params.to) {
-    fromUser.totalTransfers = fromUser.totalTransfers.plus(BigInt.fromI32(1))
-    toUser.totalTransfers = toUser.totalTransfers.plus(BigInt.fromI32(1))
-  }
-  fromUser.save()
-  toUser.save()
-
-  // Create transfer entity
-  let transferId = createId("content-", event.transaction.hash, event.logIndex)
-  let transfer = new Transfer(transferId)
-  transfer.post = event.address
-  transfer.contentCoin = event.address
-  transfer.from = event.params.from
-  transfer.to = event.params.to
-  transfer.amount = event.params.value
-  transfer.timestamp = event.block.timestamp
-  transfer.blockNumber = event.block.number
-  transfer.transactionHash = event.transaction.hash
-  transfer.save()
-
-  // Update post stats
+  // Load post and contentCoin
   let post = Post.load(event.address)
-  if (post) {
-    post.totalTransfers = post.totalTransfers.plus(BigInt.fromI32(1))
-    post.save()
+  let contentCoin = ContentCoin.load(event.address)
+
+  if (isMint) {
+    // This is a mint - create Mint entity
+    log.info("Detected mint via Transfer event: to={}, amount={}", [
+      event.params.to.toHexString(),
+      event.params.value.toString()
+    ])
+
+    // Update user mint stats
+    toUser.totalMints = toUser.totalMints.plus(BigInt.fromI32(1))
+    toUser.save()
+
+    // Create mint entity
+    let mintId = createId("mint-", event.transaction.hash, event.logIndex)
+    let mint = new Mint(mintId)
+    mint.post = event.address
+    mint.contentCoin = event.address
+    mint.minter = event.params.to
+    mint.amount = event.params.value
+    mint.timestamp = event.block.timestamp
+    mint.blockNumber = event.block.number
+    mint.transactionHash = event.transaction.hash
+    mint.save()
+
+    // Update post stats
+    if (post) {
+      post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
+      post.totalSupply = post.totalSupply.plus(event.params.value)
+      // Note: totalHolders should be calculated from unique holders, not incremented here
+      post.save()
+    }
 
     // Update content coin stats
-    let contentCoin = ContentCoin.load(event.address)
+    if (contentCoin) {
+      contentCoin.totalMints = contentCoin.totalMints.plus(BigInt.fromI32(1))
+      contentCoin.totalSupply = contentCoin.totalSupply.plus(event.params.value)
+      contentCoin.save()
+    }
+  } else {
+    // This is a regular transfer
+    // Update user stats
+    if (event.params.from != event.params.to) {
+      if (fromUser) {
+        fromUser.totalTransfers = fromUser.totalTransfers.plus(BigInt.fromI32(1))
+        fromUser.save()
+      }
+      toUser.totalTransfers = toUser.totalTransfers.plus(BigInt.fromI32(1))
+      toUser.save()
+    }
+
+    // Create transfer entity
+    let transferId = createId("content-", event.transaction.hash, event.logIndex)
+    let transfer = new Transfer(transferId)
+    transfer.post = event.address
+    transfer.contentCoin = event.address
+    transfer.from = event.params.from
+    transfer.to = event.params.to
+    transfer.amount = event.params.value
+    transfer.timestamp = event.block.timestamp
+    transfer.blockNumber = event.block.number
+    transfer.transactionHash = event.transaction.hash
+    transfer.save()
+
+    // Update post stats
+    if (post) {
+      post.totalTransfers = post.totalTransfers.plus(BigInt.fromI32(1))
+      post.save()
+    }
+
+    // Update content coin stats
     if (contentCoin) {
       contentCoin.totalTransfers = contentCoin.totalTransfers.plus(BigInt.fromI32(1))
       contentCoin.save()
     }
-
   }
 }
 
 // Handle ContentCoin Mint events (new likes)
+// Note: Some contracts emit separate Mint events, while others emit Transfer from zero address
+// This handler covers the case where explicit Mint events are emitted
 export function handleContentCoinMint(event: ContentCoinMint): void {
-  log.info("ContentCoin Mint: to={}, amount={}", [
+  log.info("ContentCoin Mint event: to={}, amount={}", [
     event.params.to.toHexString(),
     event.params.amount.toString()
   ])
@@ -244,7 +297,7 @@ export function handleContentCoinMint(event: ContentCoinMint): void {
   if (post) {
     post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
     post.totalSupply = post.totalSupply.plus(event.params.amount)
-    post.totalHolders = post.totalHolders.plus(BigInt.fromI32(1))
+    // Note: totalHolders should be calculated from unique holders, not incremented here
     post.save()
 
     // Update content coin stats
@@ -254,8 +307,6 @@ export function handleContentCoinMint(event: ContentCoinMint): void {
       contentCoin.totalSupply = contentCoin.totalSupply.plus(event.params.amount)
       contentCoin.save()
     }
-
-
   }
 }
 
