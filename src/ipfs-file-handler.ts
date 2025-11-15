@@ -2,17 +2,17 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.0.0 - Simplified to trust File Data Source guarantees (no race condition checks needed)
+// VERSION: v3.0.5 - Canonical pattern: File Data Source is the ONLY place that creates PostMetadata
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
 
 // File Data Source Handler - Called exactly once per CID when IPFS content is fetched
+// THIS IS THE ONLY PLACE WE EVER CREATE PostMetadata ENTITIES
 // The Graph Node guarantees:
 // 1. File is fetched once per unique CID
 // 2. Handler runs exactly once when file becomes available
 // 3. Multiple PostMetadataTemplate.create() calls for same CID are deduplicated automatically
-// Therefore: No race condition checks needed - just create and save!
 export function handlePostMetadata(content: Bytes): void {
   // Get the IPFS CID from the data source context
   const cid = dataSource.stringParam()
@@ -22,16 +22,12 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // ALWAYS load first - create shell if it doesn't exist yet
-  // This handles the case where File Data Source finishes before contract handler
-  // Both handlers can safely create the shell - whichever runs first wins
+  // THIS IS THE ONLY PLACE WE EVER CREATE THE ENTITY
+  // Load first - create if it doesn't exist (shouldn't happen, but safety check)
   let metadata = PostMetadata.load(cid)
   if (metadata == null) {
-    // File Data Source handler ran before contract handler - create shell ourselves
     metadata = new PostMetadata(cid)
-    // Save immediately to commit the shell entity before parsing
-    // This prevents race conditions with contract handler
-    metadata.save()
+    // Initialize fields to null/empty - will be populated below
   }
   
   // Parse JSON metadata from bytes

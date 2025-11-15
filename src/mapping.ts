@@ -21,8 +21,7 @@ import {
   Mint, 
   Transfer, 
   Swap, 
-  Reward,
-  PostMetadata
+  Reward
 } from "../generated/schema"
 import { ContentCoinTemplate, CreatorCoinTemplate, PostMetadataTemplate } from "../generated/templates"
 import { extractIPFSHash, buildIPFSURL } from "./ipfs-handler"
@@ -63,19 +62,8 @@ function processIPFSURI(post: Post, contentURI: string): void {
   post.ipfsHash = hash
   post.ipfsGatewayURL = buildIPFSURL(hash)
   
-  // Create empty shell PostMetadata entity immediately to avoid race conditions
-  // The File Data Source handler will populate all fields later
-  // If File Data Source handler already created it, just use the existing one
-  let metadata = PostMetadata.load(hash)
-  if (metadata == null) {
-    metadata = new PostMetadata(hash)
-    // Leave all fields null - File Data Source handler will populate them
-    metadata.save()
-  }
-  // If metadata already exists (File Data Source handler created it first), that's fine
-  // We just need to link the Post to it
-  
-  // Link Post to PostMetadata entity
+  // Link Post to PostMetadata entity - directly store CID as relation ID
+  // The File Data Source handler is the ONLY place that creates PostMetadata entities
   post.metadata = hash
   
   // Spawn File Data Source to fetch and parse IPFS content
@@ -84,6 +72,7 @@ function processIPFSURI(post: Post, contentURI: string): void {
   // - Handler runs exactly once when file becomes available
   // - Multiple create() calls for same CID are automatically deduplicated
   // This is idempotent - safe to call multiple times for the same CID
+  // The File Data Source handler will create the PostMetadata entity if it doesn't exist
   PostMetadataTemplate.create(hash)
   
   log.info("Spawned IPFS File Data Source for post {} - CID: {}", [
