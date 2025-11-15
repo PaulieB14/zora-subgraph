@@ -17,7 +17,7 @@ type Post @entity(immutable: false) {
   # IPFS Content Fields - Reference to PostMetadata entity
   ipfsHash: String # Extracted IPFS hash (used to link to PostMetadata)
   ipfsGatewayURL: String # IPFS gateway URL for fetching content
-  metadata: PostMetadata # Link to file-based metadata entity
+  metadata: String! # IPFS CID (Content Identifier) - links to PostMetadata entity by ID
 
   # Social engagement metrics
   totalSupply: BigInt!
@@ -138,8 +138,5 @@ type PostMetadata @entity(immutable: true) {
   externalUrl: String # Parsed external URL from IPFS
   content: String # Parsed content/text from IPFS
   attributes: String # Parsed attributes JSON from IPFS
-  
-  # Relationship back to Post (using @derivedFrom)
-  posts: [Post!]! @derivedFrom(field: "metadata")
 }
 

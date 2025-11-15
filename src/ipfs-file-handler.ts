@@ -2,7 +2,7 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.1.1 - Canonical pattern matching Lens/Farcaster/Sound subgraphs
+// VERSION: v3.2.0 - Canonical pattern: ONLY place that creates PostMetadata entities
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
@@ -23,12 +23,18 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // THIS IS THE ONLY PLACE WE EVER CREATE THE ENTITY
-  // Load first - create if it doesn't exist (canonical pattern from Lens/Farcaster)
+  // ONLY HERE do we ever create the entity — guaranteed to run exactly once per CID
   let metadata = PostMetadata.load(cid)
   if (metadata == null) {
-    // Entity doesn't exist - create it now
     metadata = new PostMetadata(cid)
+    // Initialize default fields (optional but safe)
+    metadata.contentType = null
+    metadata.metadata = null
+    metadata.description = null
+    metadata.image = null
+    metadata.externalUrl = null
+    metadata.content = null
+    metadata.attributes = null
   } else {
     // Entity already exists - File Data Source handler ran twice somehow
     // Since PostMetadata is immutable, we cannot update it - just return
