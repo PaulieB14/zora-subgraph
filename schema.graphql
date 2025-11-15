@@ -128,8 +128,10 @@ type Reward @entity(immutable: true) {
   transactionHash: Bytes!
 }
 
-# IPFS File Data Source Entity - Immutable, populated by file data source handler
-type PostMetadata @entity(immutable: true) {
+# IPFS File Data Source Entity - Populated by file data source handler
+# Note: Removed immutable constraint to prevent vid duplicate key errors
+# File Data Sources guarantee single execution per CID, so immutability not strictly needed
+type PostMetadata @entity(immutable: false) {
   id: String! # IPFS CID (Content Identifier)
   contentType: String # Content type (e.g., "application/json")
   metadata: String # Raw IPFS metadata JSON
