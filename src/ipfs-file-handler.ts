@@ -2,7 +2,8 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.2.1 - Added final reload check before save to prevent race conditions
+// VERSION: v3.3.0 - Bulletproof pattern: Check-before-create, parse, check-before-save
+// Based on The Graph's official File Data Sources tutorial pattern
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
@@ -23,24 +24,17 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // ONLY HERE do we ever create the entity — guaranteed to run exactly once per CID
-  let metadata = PostMetadata.load(cid)
-  if (metadata == null) {
-    metadata = new PostMetadata(cid)
-    // Initialize default fields (optional but safe)
-    metadata.contentType = null
-    metadata.metadata = null
-    metadata.description = null
-    metadata.image = null
-    metadata.externalUrl = null
-    metadata.content = null
-    metadata.attributes = null
-  } else {
-    // Entity already exists - File Data Source handler ran twice somehow
-    // Since PostMetadata is immutable, we cannot update it - just return
+  // CRITICAL CHECK #1: Load entity BEFORE doing any work
+  // If entity exists, return immediately - immutable entities cannot be updated
+  let existingCheck = PostMetadata.load(cid)
+  if (existingCheck != null) {
     log.warning("PostMetadata already exists for CID: {} - skipping (immutable entity, already processed)", [cid])
     return
   }
+
+  // Entity doesn't exist - create it now
+  // Following the tutorial pattern: create entity, populate fields, save
+  let metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes
   const jsonValue = json.fromBytes(content)
@@ -101,12 +95,13 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // CRITICAL: Reload entity right before save to prevent race conditions
-  // Another handler might have created it between our initial load and now
+  // CRITICAL CHECK #2: Reload entity right before save to prevent race conditions
+  // Another handler might have created it between our initial check and now
   // Since PostMetadata is immutable, we MUST NOT save if it already exists
-  let existingMetadata = PostMetadata.load(cid)
-  if (existingMetadata != null) {
+  let finalCheck = PostMetadata.load(cid)
+  if (finalCheck != null) {
     // Entity was created by another handler - skip save to prevent duplicate key error
+    // This should never happen with proper File Data Source deduplication, but we protect against it
     log.warning("PostMetadata already exists before save for CID: {} - skipping save (immutable entity, race condition detected)", [cid])
     return
   }
