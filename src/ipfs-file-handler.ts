@@ -2,7 +2,7 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.9.0 - Defensive check REQUIRED for CID-based entity IDs
+// VERSION: v3.10.0 - Load-or-create pattern with immutable: false to prevent vid errors
 // Tutorial uses Post ID (unique per post), but we use CID (one per CID)
 // Multiple posts can reference same CID, so handler may be called multiple times
 // MUST check if entity exists before creating to prevent duplicate key errors
@@ -24,18 +24,18 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // CRITICAL: Check if entity already exists
+  // CRITICAL: Load-or-create pattern for non-immutable entities
   // Unlike tutorial (Post ID = unique per post), we use CID as ID
   // Multiple posts can reference same CID, causing handler to run multiple times
-  // If entity exists (immutable), we cannot update it, so return early
+  // With immutable: false, we can update if entity exists (handles retries/reorgs)
   let metadata = PostMetadata.load(cid)
-  if (metadata != null) {
-    log.warning("PostMetadata already exists for CID: {} - skipping (immutable entity, already processed)", [cid])
-    return
+  if (metadata == null) {
+    // Entity doesn't exist - create it now
+    metadata = new PostMetadata(cid)
+  } else {
+    // Entity exists - log and continue (will update fields if needed)
+    log.info("PostMetadata already exists for CID: {} - updating fields", [cid])
   }
-
-  // Entity doesn't exist - create it now
-  metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes
   const jsonValue = json.fromBytes(content)
