@@ -22,13 +22,16 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // ALWAYS load first - the entity should already exist as an empty shell
-  // created by the mapping handler to avoid race conditions
+  // ALWAYS load first - create shell if it doesn't exist yet
+  // This handles the case where File Data Source finishes before contract handler
+  // Both handlers can safely create the shell - whichever runs first wins
   let metadata = PostMetadata.load(cid)
   if (metadata == null) {
-    // This should rarely happen, but create if it doesn't exist
-    log.warning("PostMetadata shell not found for CID: {} - creating now", [cid])
+    // File Data Source handler ran before contract handler - create shell ourselves
     metadata = new PostMetadata(cid)
+    // Save immediately to commit the shell entity before parsing
+    // This prevents race conditions with contract handler
+    metadata.save()
   }
   
   // Parse JSON metadata from bytes

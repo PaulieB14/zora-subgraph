@@ -65,12 +65,15 @@ function processIPFSURI(post: Post, contentURI: string): void {
   
   // Create empty shell PostMetadata entity immediately to avoid race conditions
   // The File Data Source handler will populate all fields later
+  // If File Data Source handler already created it, just use the existing one
   let metadata = PostMetadata.load(hash)
   if (metadata == null) {
     metadata = new PostMetadata(hash)
     // Leave all fields null - File Data Source handler will populate them
     metadata.save()
   }
+  // If metadata already exists (File Data Source handler created it first), that's fine
+  // We just need to link the Post to it
   
   // Link Post to PostMetadata entity
   post.metadata = hash
