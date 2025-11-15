@@ -2,7 +2,7 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.2.0 - Canonical pattern: ONLY place that creates PostMetadata entities
+// VERSION: v3.2.1 - Added final reload check before save to prevent race conditions
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
@@ -99,6 +99,16 @@ export function handlePostMetadata(content: Bytes): void {
     log.warning("IPFS content is not JSON - CID: {}", [cid])
     metadata.contentType = "text/plain"
     metadata.content = content.toString()
+  }
+  
+  // CRITICAL: Reload entity right before save to prevent race conditions
+  // Another handler might have created it between our initial load and now
+  // Since PostMetadata is immutable, we MUST NOT save if it already exists
+  let existingMetadata = PostMetadata.load(cid)
+  if (existingMetadata != null) {
+    // Entity was created by another handler - skip save to prevent duplicate key error
+    log.warning("PostMetadata already exists before save for CID: {} - skipping save (immutable entity, race condition detected)", [cid])
+    return
   }
   
   // Save the entity - PostMetadata is immutable, so this can only happen once per CID
