@@ -23,11 +23,20 @@ export function handlePostMetadata(content: Bytes): void {
   ])
 
   // THIS IS THE ONLY PLACE WE EVER CREATE THE ENTITY
-  // Load first - create if it doesn't exist (shouldn't happen, but safety check)
+  // Load first - create if it doesn't exist, then reload to get persisted version
   let metadata = PostMetadata.load(cid)
   if (metadata == null) {
-    metadata = new PostMetadata(cid)
-    // Initialize fields to null/empty - will be populated below
+    // Create the entity
+    let newMetadata = new PostMetadata(cid)
+    // Save immediately to commit the entity
+    newMetadata.save()
+    // Reload to get the persisted version - this ensures we're working with the actual entity
+    metadata = PostMetadata.load(cid)
+    // If still null after reload, something went wrong
+    if (metadata == null) {
+      log.error("Failed to create PostMetadata entity for CID: {}", [cid])
+      return
+    }
   }
   
   // Parse JSON metadata from bytes
@@ -89,7 +98,8 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // Save the entity - File Data Sources guarantee no duplicates
+  // Save the entity - metadata should already exist (we loaded/created it above)
+  // This is safe because we're updating an existing entity, not creating a new one
   metadata.save()
   log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
