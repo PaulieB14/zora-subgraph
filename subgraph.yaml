@@ -95,3 +95,4 @@ templates:
       handler: handlePostMetadata
       entities:
         - PostMetadata
+      abis: []
