@@ -2,18 +2,17 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.10.0 - Load-or-create pattern with immutable: false to prevent vid errors
-// Tutorial uses Post ID (unique per post), but we use CID (one per CID)
-// Multiple posts can reference same CID, so handler may be called multiple times
-// MUST check if entity exists before creating to prevent duplicate key errors
+// VERSION: v3.11.0 - Following tutorial pattern EXACTLY: immutable: true, no existence checks
+// Tutorial: https://thegraph.com/blog/file-data-sources-tutorial/
+// Pattern: let post = new PostContent(id); post.hash = hash; post.save();
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
 
 // File Data Source Handler - Called exactly once per CID when IPFS content is fetched
 // THIS IS THE ONLY PLACE WE EVER CREATE PostMetadata ENTITIES
-// CRITICAL: Must check if entity exists because we use CID as entity ID
-// Unlike tutorial (Post ID per post), we have one entity per CID (shared by multiple posts)
+// Following tutorial pattern exactly: create entity, populate fields, save
+// No existence checks - Graph Node guarantees single execution per CID
 export function handlePostMetadata(content: Bytes): void {
   // Get the IPFS CID from the data source context
   // This is the CID passed to PostMetadataTemplate.create(cid)
@@ -24,18 +23,10 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // CRITICAL: Load-or-create pattern for non-immutable entities
-  // Unlike tutorial (Post ID = unique per post), we use CID as ID
-  // Multiple posts can reference same CID, causing handler to run multiple times
-  // With immutable: false, we can update if entity exists (handles retries/reorgs)
-  let metadata = PostMetadata.load(cid)
-  if (metadata == null) {
-    // Entity doesn't exist - create it now
-    metadata = new PostMetadata(cid)
-  } else {
-    // Entity exists - log and continue (will update fields if needed)
-    log.info("PostMetadata already exists for CID: {} - updating fields", [cid])
-  }
+  // Create entity directly - following tutorial pattern exactly
+  // Tutorial shows: let post = new PostContent(id); post.hash = hash; post.save();
+  // No existence checks - Graph Node handles deduplication
+  let metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes
   const jsonValue = json.fromBytes(content)
@@ -99,7 +90,6 @@ export function handlePostMetadata(content: Bytes): void {
   // Save the entity - following tutorial pattern exactly
   // Tutorial shows: post.save(); with no checks before or after
   // File Data Sources guarantee this handler runs exactly once per CID
-  // Version: v3.8.2 - Tutorial pattern: direct create and save
   metadata.save()
   log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
