@@ -94,23 +94,17 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // CRITICAL: Always reload right before save to ensure we're working with persisted entity
-  // This prevents duplicate key errors if handler somehow runs multiple times
-  let finalMetadata = PostMetadata.load(cid)
-  if (finalMetadata != null) {
-    // Entity already exists - update it with our parsed data instead of creating new
-    finalMetadata.contentType = metadata.contentType
-    finalMetadata.metadata = metadata.metadata
-    finalMetadata.description = metadata.description
-    finalMetadata.image = metadata.image
-    finalMetadata.externalUrl = metadata.externalUrl
-    finalMetadata.content = metadata.content
-    finalMetadata.attributes = metadata.attributes
-    finalMetadata.save()
-    log.info("Updated existing PostMetadata - CID: {}", [cid])
-  } else {
-    // Entity doesn't exist - save the one we created
-    metadata.save()
-    log.info("Created new PostMetadata - CID: {}", [cid])
+  // CRITICAL: PostMetadata is immutable - we can NEVER update it, only create once
+  // Check one final time right before save - if it exists, skip save to prevent duplicate key error
+  let finalCheck = PostMetadata.load(cid)
+  if (finalCheck != null) {
+    // Entity already exists - cannot update immutable entity, just skip
+    log.warning("PostMetadata already exists for CID: {} - skipping save (immutable entity)", [cid])
+    return
   }
+  
+  // Entity doesn't exist - save the one we created
+  // This is the only place we save - immutable entities can only be created once
+  metadata.save()
+  log.info("Created new PostMetadata - CID: {}", [cid])
 }
