@@ -23,12 +23,17 @@ export function handlePostMetadata(content: Bytes): void {
   ])
 
   // THIS IS THE ONLY PLACE WE EVER CREATE THE ENTITY
-  // Load first - create if it doesn't exist (but don't save yet)
+  // ALWAYS load first - if it exists, we're done (already processed)
   let metadata = PostMetadata.load(cid)
-  if (metadata == null) {
-    // Create the entity - we'll save it once at the end after populating fields
-    metadata = new PostMetadata(cid)
+  if (metadata != null) {
+    // Entity already exists and is populated - File Data Source ran twice somehow
+    // This shouldn't happen, but if it does, just return to avoid duplicate key error
+    log.warning("PostMetadata already exists for CID: {} - skipping (File Data Source ran twice?)", [cid])
+    return
   }
+  
+  // Entity doesn't exist - create it now
+  metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes
   const jsonValue = json.fromBytes(content)
@@ -89,23 +94,15 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // CRITICAL: Final check right before save to prevent duplicates
-  // Reload to ensure we're working with the actual persisted entity
-  let finalMetadata = PostMetadata.load(cid)
-  if (finalMetadata != null) {
-    // Entity already exists - update it with our parsed data
-    finalMetadata.contentType = metadata.contentType
-    finalMetadata.metadata = metadata.metadata
-    finalMetadata.description = metadata.description
-    finalMetadata.image = metadata.image
-    finalMetadata.externalUrl = metadata.externalUrl
-    finalMetadata.content = metadata.content
-    finalMetadata.attributes = metadata.attributes
-    finalMetadata.save()
-    log.info("Updated existing PostMetadata - CID: {}", [cid])
-  } else {
-    // Entity doesn't exist - save the one we created
-    metadata.save()
-    log.info("Created new PostMetadata - CID: {}", [cid])
+  // CRITICAL: Check one more time right before save
+  // If another handler instance created it between our check and now, skip save
+  let finalCheck = PostMetadata.load(cid)
+  if (finalCheck != null) {
+    log.warning("PostMetadata was created by another handler instance - CID: {}, skipping save", [cid])
+    return
   }
+  
+  // Save the entity - this is the only place we save
+  metadata.save()
+  log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
