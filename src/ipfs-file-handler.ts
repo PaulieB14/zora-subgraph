@@ -94,15 +94,23 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // CRITICAL: Check one more time right before save
-  // If another handler instance created it between our check and now, skip save
-  let finalCheck = PostMetadata.load(cid)
-  if (finalCheck != null) {
-    log.warning("PostMetadata was created by another handler instance - CID: {}, skipping save", [cid])
-    return
+  // CRITICAL: Always reload right before save to ensure we're working with persisted entity
+  // This prevents duplicate key errors if handler somehow runs multiple times
+  let finalMetadata = PostMetadata.load(cid)
+  if (finalMetadata != null) {
+    // Entity already exists - update it with our parsed data instead of creating new
+    finalMetadata.contentType = metadata.contentType
+    finalMetadata.metadata = metadata.metadata
+    finalMetadata.description = metadata.description
+    finalMetadata.image = metadata.image
+    finalMetadata.externalUrl = metadata.externalUrl
+    finalMetadata.content = metadata.content
+    finalMetadata.attributes = metadata.attributes
+    finalMetadata.save()
+    log.info("Updated existing PostMetadata - CID: {}", [cid])
+  } else {
+    // Entity doesn't exist - save the one we created
+    metadata.save()
+    log.info("Created new PostMetadata - CID: {}", [cid])
   }
-  
-  // Save the entity - this is the only place we save
-  metadata.save()
-  log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
