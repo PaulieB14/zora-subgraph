@@ -2,7 +2,7 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.0.5 - Canonical pattern: File Data Source is the ONLY place that creates PostMetadata
+// VERSION: v3.1.1 - Canonical pattern matching Lens/Farcaster/Sound subgraphs
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
@@ -15,6 +15,7 @@ import { PostMetadata } from "../generated/schema"
 // 3. Multiple PostMetadataTemplate.create() calls for same CID are deduplicated automatically
 export function handlePostMetadata(content: Bytes): void {
   // Get the IPFS CID from the data source context
+  // This is the CID passed to PostMetadataTemplate.create(cid)
   const cid = dataSource.stringParam()
   
   log.info("Processing IPFS metadata - CID: {}, size: {}", [
@@ -23,17 +24,17 @@ export function handlePostMetadata(content: Bytes): void {
   ])
 
   // THIS IS THE ONLY PLACE WE EVER CREATE THE ENTITY
-  // ALWAYS load first - if it exists, we're done (already processed)
+  // Load first - create if it doesn't exist (canonical pattern from Lens/Farcaster)
   let metadata = PostMetadata.load(cid)
-  if (metadata != null) {
-    // Entity already exists and is populated - File Data Source ran twice somehow
-    // This shouldn't happen, but if it does, just return to avoid duplicate key error
-    log.warning("PostMetadata already exists for CID: {} - skipping (File Data Source ran twice?)", [cid])
+  if (metadata == null) {
+    // Entity doesn't exist - create it now
+    metadata = new PostMetadata(cid)
+  } else {
+    // Entity already exists - File Data Source handler ran twice somehow
+    // Since PostMetadata is immutable, we cannot update it - just return
+    log.warning("PostMetadata already exists for CID: {} - skipping (immutable entity, already processed)", [cid])
     return
   }
-  
-  // Entity doesn't exist - create it now
-  metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes
   const jsonValue = json.fromBytes(content)
@@ -94,17 +95,8 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // CRITICAL: PostMetadata is immutable - we can NEVER update it, only create once
-  // Check one final time right before save - if it exists, skip save to prevent duplicate key error
-  let finalCheck = PostMetadata.load(cid)
-  if (finalCheck != null) {
-    // Entity already exists - cannot update immutable entity, just skip
-    log.warning("PostMetadata already exists for CID: {} - skipping save (immutable entity)", [cid])
-    return
-  }
-  
-  // Entity doesn't exist - save the one we created
-  // This is the only place we save - immutable entities can only be created once
+  // Save the entity - PostMetadata is immutable, so this can only happen once per CID
+  // File Data Sources guarantee this handler runs exactly once per CID
   metadata.save()
-  log.info("Created new PostMetadata - CID: {}", [cid])
+  log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
