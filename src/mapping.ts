@@ -21,7 +21,8 @@ import {
   Mint, 
   Transfer, 
   Swap, 
-  Reward
+  Reward,
+  PostMetadata
 } from "../generated/schema"
 import { ContentCoinTemplate, CreatorCoinTemplate, PostMetadataTemplate } from "../generated/templates"
 import { extractIPFSHash, buildIPFSURL } from "./ipfs-handler"
@@ -61,8 +62,17 @@ function processIPFSURI(post: Post, contentURI: string): void {
   // Store hash and gateway URL in Post entity
   post.ipfsHash = hash
   post.ipfsGatewayURL = buildIPFSURL(hash)
-  // Link to PostMetadata entity - The Graph will resolve this string ID to the PostMetadata entity
-  // This works even though PostMetadata is created asynchronously by File Data Source
+  
+  // Create empty shell PostMetadata entity immediately to avoid race conditions
+  // The File Data Source handler will populate all fields later
+  let metadata = PostMetadata.load(hash)
+  if (metadata == null) {
+    metadata = new PostMetadata(hash)
+    // Leave all fields null - File Data Source handler will populate them
+    metadata.save()
+  }
+  
+  // Link Post to PostMetadata entity
   post.metadata = hash
   
   // Spawn File Data Source to fetch and parse IPFS content

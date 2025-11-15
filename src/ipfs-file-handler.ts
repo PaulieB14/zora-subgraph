@@ -22,17 +22,14 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // Safety check: File Data Sources should prevent duplicates, but add minimal guard
-  // This should never trigger in normal operation, but protects against edge cases
-  let existingMetadata = PostMetadata.load(cid)
-  if (existingMetadata != null) {
-    log.warning("PostMetadata already exists for CID: {} - this should not happen with File Data Sources", [cid])
-    return
+  // ALWAYS load first - the entity should already exist as an empty shell
+  // created by the mapping handler to avoid race conditions
+  let metadata = PostMetadata.load(cid)
+  if (metadata == null) {
+    // This should rarely happen, but create if it doesn't exist
+    log.warning("PostMetadata shell not found for CID: {} - creating now", [cid])
+    metadata = new PostMetadata(cid)
   }
-
-  // Create PostMetadata entity using CID as ID
-  // With File Data Sources, this handler is guaranteed to run only once per CID
-  let metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes
   const jsonValue = json.fromBytes(content)
