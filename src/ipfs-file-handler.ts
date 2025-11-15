@@ -2,17 +2,17 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.4.0 - Exact tutorial pattern: No checks, just create and save
-// Based on The Graph's official File Data Sources tutorial:
-// https://thegraph.com/blog/file-data-sources-tutorial/
+// VERSION: v3.6.0 - Following official tutorial pattern exactly
+// Pattern: immutable: true, no existence checks, just create and save
+// Graph Node guarantees File Data Sources run exactly once per unique CID
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
 
 // File Data Source Handler - Called exactly once per CID when IPFS content is fetched
 // THIS IS THE ONLY PLACE WE EVER CREATE PostMetadata ENTITIES
-// Following the official tutorial pattern: create entity, populate fields, save
-// The Graph Node guarantees File Data Sources run exactly once per unique CID
+// Following official tutorial pattern: create entity, populate fields, save
+// No existence checks needed - Graph Node guarantees single execution per CID
 export function handlePostMetadata(content: Bytes): void {
   // Get the IPFS CID from the data source context
   // This is the CID passed to PostMetadataTemplate.create(cid)
@@ -23,8 +23,9 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // Create entity - following tutorial pattern exactly
-  // Tutorial doesn't check if exists - File Data Sources guarantee single execution
+  // Create entity directly - following tutorial pattern exactly
+  // File Data Sources guarantee this handler runs exactly once per unique CID
+  // No existence checks needed - Graph Node handles deduplication
   let metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes
@@ -88,7 +89,7 @@ export function handlePostMetadata(content: Bytes): void {
   
   // Save the entity - following tutorial pattern exactly
   // File Data Sources guarantee this handler runs exactly once per CID
-  // No existence checks needed - Graph Node handles deduplication
+  // Graph Node handles deduplication at the template level
   metadata.save()
   log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
