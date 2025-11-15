@@ -61,6 +61,9 @@ function processIPFSURI(post: Post, contentURI: string): void {
   // Store hash and gateway URL in Post entity
   post.ipfsHash = hash
   post.ipfsGatewayURL = buildIPFSURL(hash)
+  // Link to PostMetadata entity - The Graph will resolve this string ID to the PostMetadata entity
+  // This works even though PostMetadata is created asynchronously by File Data Source
+  post.metadata = hash
   
   // Spawn File Data Source to fetch and parse IPFS content
   // The Graph Node guarantees:
