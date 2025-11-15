@@ -23,20 +23,11 @@ export function handlePostMetadata(content: Bytes): void {
   ])
 
   // THIS IS THE ONLY PLACE WE EVER CREATE THE ENTITY
-  // Load first - create if it doesn't exist, then reload to get persisted version
+  // Load first - create if it doesn't exist (but don't save yet)
   let metadata = PostMetadata.load(cid)
   if (metadata == null) {
-    // Create the entity
-    let newMetadata = new PostMetadata(cid)
-    // Save immediately to commit the entity
-    newMetadata.save()
-    // Reload to get the persisted version - this ensures we're working with the actual entity
-    metadata = PostMetadata.load(cid)
-    // If still null after reload, something went wrong
-    if (metadata == null) {
-      log.error("Failed to create PostMetadata entity for CID: {}", [cid])
-      return
-    }
+    // Create the entity - we'll save it once at the end after populating fields
+    metadata = new PostMetadata(cid)
   }
   
   // Parse JSON metadata from bytes
@@ -98,8 +89,23 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // Save the entity - metadata should already exist (we loaded/created it above)
-  // This is safe because we're updating an existing entity, not creating a new one
-  metadata.save()
-  log.info("Successfully saved PostMetadata - CID: {}", [cid])
+  // CRITICAL: Final check right before save to prevent duplicates
+  // Reload to ensure we're working with the actual persisted entity
+  let finalMetadata = PostMetadata.load(cid)
+  if (finalMetadata != null) {
+    // Entity already exists - update it with our parsed data
+    finalMetadata.contentType = metadata.contentType
+    finalMetadata.metadata = metadata.metadata
+    finalMetadata.description = metadata.description
+    finalMetadata.image = metadata.image
+    finalMetadata.externalUrl = metadata.externalUrl
+    finalMetadata.content = metadata.content
+    finalMetadata.attributes = metadata.attributes
+    finalMetadata.save()
+    log.info("Updated existing PostMetadata - CID: {}", [cid])
+  } else {
+    // Entity doesn't exist - save the one we created
+    metadata.save()
+    log.info("Created new PostMetadata - CID: {}", [cid])
+  }
 }
