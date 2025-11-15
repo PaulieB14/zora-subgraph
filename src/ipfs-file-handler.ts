@@ -2,7 +2,7 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.8.0 - Following tutorial pattern EXACTLY: no existence checks, just create and save
+// VERSION: v3.8.1 - Following tutorial pattern EXACTLY: no existence checks, just create and save
 // Pattern matches official tutorial: https://thegraph.com/blog/file-data-sources-tutorial/
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
