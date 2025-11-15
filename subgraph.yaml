@@ -12,7 +12,7 @@ dataSources:
     source:
       address: "0x777777751622c0d3258f214F9DF38E35BF45baF3"  # Real Zora Factory on Base
       abi: ZoraFactory
-      startBlock: 26602741
+      startBlock: 31168873  # Optimized: ~10k blocks before first post (block 31178873)
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -86,3 +86,12 @@ templates:
         - event: Transfer(indexed address,indexed address,uint256)
           handler: handleCreatorCoinTransfer
       file: ./src/mapping.ts
+  - name: PostMetadataTemplate
+    kind: file/ipfs
+    mapping:
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/ipfs-file-handler.ts
+      handler: handlePostMetadata
+      entities:
+        - PostMetadata

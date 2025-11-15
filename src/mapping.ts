@@ -23,8 +23,8 @@ import {
   Swap, 
   Reward
 } from "../generated/schema"
-import { ContentCoinTemplate, CreatorCoinTemplate } from "../generated/templates"
-import { processIPFSContent, extractMetadataFields, IPFSContent } from "./ipfs-handler"
+import { ContentCoinTemplate, CreatorCoinTemplate, PostMetadataTemplate } from "../generated/templates"
+import { extractIPFSHash, buildIPFSURL } from "./ipfs-handler"
 
 // Helper function to create unique IDs
 // Uses transaction hash + log index to create unique IDs
@@ -43,32 +43,37 @@ function createId(prefix: string, hash: Bytes, logIndex: BigInt): Bytes {
   return hash.concat(logIndexBytes)
 }
 
-// Helper function to populate IPFS fields in Post entity
-function populateIPFSFields(post: Post, contentURI: string): void {
-  const ipfsContent = processIPFSContent(contentURI)
-  if (ipfsContent) {
-    post.ipfsHash = ipfsContent.hash
-    post.ipfsGatewayURL = ipfsContent.gatewayURL
-    post.ipfsContentType = ipfsContent.contentType
-    post.ipfsMetadata = ipfsContent.metadata
-    
-    // Extract parsed fields
-    if (ipfsContent.parsedData) {
-      post.ipfsDescription = ipfsContent.getField("description")
-      post.ipfsImage = ipfsContent.getField("image")
-      post.ipfsExternalUrl = ipfsContent.getField("external_url")
-      post.ipfsAttributes = ipfsContent.getField("attributes")
-    }
-    
-    log.info("Populated IPFS fields for post {} - Hash: {}", [
+// Helper function to process IPFS URI and spawn File Data Source
+// File Data Sources fetch IPFS content asynchronously and populate PostMetadata entity
+// NOTE: We cannot check PostMetadata existence here because file-based entities
+// cannot be accessed from chain-based handlers per File Data Source limitations
+function processIPFSURI(post: Post, contentURI: string): void {
+  const hash = extractIPFSHash(contentURI)
+  
+  if (!hash || hash.length == 0) {
+    log.warning("Invalid IPFS URI for post {}: {}", [
       post.id.toHexString(),
-      ipfsContent.hash
+      contentURI
     ])
-  } else {
-    log.warning("Failed to process IPFS content for post: {}", [
-      post.id.toHexString()
-    ])
+    return
   }
+
+  // Store hash and gateway URL in Post entity
+  post.ipfsHash = hash
+  post.ipfsGatewayURL = buildIPFSURL(hash)
+  
+  // Spawn File Data Source to fetch and parse IPFS content
+  // The Graph Node guarantees:
+  // - File is fetched once per unique CID
+  // - Handler runs exactly once when file becomes available
+  // - Multiple create() calls for same CID are automatically deduplicated
+  // This is idempotent - safe to call multiple times for the same CID
+  PostMetadataTemplate.create(hash)
+  
+  log.info("Spawned IPFS File Data Source for post {} - CID: {}", [
+    post.id.toHexString(),
+    hash
+  ])
 }
 
 // Handle ZoraFactory CoinCreated events (new posts/coins created)
@@ -108,8 +113,8 @@ export function handleCoinCreatedV4(event: CoinCreatedV4): void {
   post.totalSwaps = BigInt.fromI32(0)
   post.totalHolders = BigInt.fromI32(0)
   
-  // Process IPFS content and populate fields
-  populateIPFSFields(post, event.params.uri)
+  // Process IPFS URI and spawn File Data Source to fetch metadata
+  processIPFSURI(post, event.params.uri)
   
   post.save()
 
@@ -182,6 +187,21 @@ export function handleContentCoinTransfer(event: ContentCoinTransfer): void {
   let post = Post.load(event.address)
   let contentCoin = ContentCoin.load(event.address)
 
+  // Only process if post exists (required for entity relationships)
+  if (!post) {
+    log.warning("Post not found for ContentCoin transfer at address: {}", [
+      event.address.toHexString()
+    ])
+    return
+  }
+
+  if (!contentCoin) {
+    log.warning("ContentCoin not found for transfer at address: {}", [
+      event.address.toHexString()
+    ])
+    return
+  }
+
   if (isMint) {
     // This is a mint - create Mint entity
     log.info("Detected mint via Transfer event: to={}, amount={}", [
@@ -206,19 +226,15 @@ export function handleContentCoinTransfer(event: ContentCoinTransfer): void {
     mint.save()
 
     // Update post stats
-    if (post) {
-      post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
-      post.totalSupply = post.totalSupply.plus(event.params.value)
-      // Note: totalHolders should be calculated from unique holders, not incremented here
-      post.save()
-    }
+    post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
+    post.totalSupply = post.totalSupply.plus(event.params.value)
+    // Note: totalHolders should be calculated from unique holders, not incremented here
+    post.save()
 
     // Update content coin stats
-    if (contentCoin) {
-      contentCoin.totalMints = contentCoin.totalMints.plus(BigInt.fromI32(1))
-      contentCoin.totalSupply = contentCoin.totalSupply.plus(event.params.value)
-      contentCoin.save()
-    }
+    contentCoin.totalMints = contentCoin.totalMints.plus(BigInt.fromI32(1))
+    contentCoin.totalSupply = contentCoin.totalSupply.plus(event.params.value)
+    contentCoin.save()
   } else {
     // This is a regular transfer
     // Update user stats
@@ -245,16 +261,12 @@ export function handleContentCoinTransfer(event: ContentCoinTransfer): void {
     transfer.save()
 
     // Update post stats
-    if (post) {
-      post.totalTransfers = post.totalTransfers.plus(BigInt.fromI32(1))
-      post.save()
-    }
+    post.totalTransfers = post.totalTransfers.plus(BigInt.fromI32(1))
+    post.save()
 
     // Update content coin stats
-    if (contentCoin) {
-      contentCoin.totalTransfers = contentCoin.totalTransfers.plus(BigInt.fromI32(1))
-      contentCoin.save()
-    }
+    contentCoin.totalTransfers = contentCoin.totalTransfers.plus(BigInt.fromI32(1))
+    contentCoin.save()
   }
 }
 
@@ -280,6 +292,25 @@ export function handleContentCoinMint(event: ContentCoinMint): void {
   user.totalMints = user.totalMints.plus(BigInt.fromI32(1))
   user.save()
 
+  // Load post and contentCoin - required for entity relationships
+  let post = Post.load(event.address)
+  let contentCoin = ContentCoin.load(event.address)
+
+  // Only process if post and contentCoin exist
+  if (!post) {
+    log.warning("Post not found for ContentCoin mint at address: {}", [
+      event.address.toHexString()
+    ])
+    return
+  }
+
+  if (!contentCoin) {
+    log.warning("ContentCoin not found for mint at address: {}", [
+      event.address.toHexString()
+    ])
+    return
+  }
+
   // Create mint entity
   let mintId = createId("mint-", event.transaction.hash, event.logIndex)
   let mint = new Mint(mintId)
@@ -293,21 +324,15 @@ export function handleContentCoinMint(event: ContentCoinMint): void {
   mint.save()
 
   // Update post stats
-  let post = Post.load(event.address)
-  if (post) {
-    post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
-    post.totalSupply = post.totalSupply.plus(event.params.amount)
-    // Note: totalHolders should be calculated from unique holders, not incremented here
-    post.save()
+  post.totalMints = post.totalMints.plus(BigInt.fromI32(1))
+  post.totalSupply = post.totalSupply.plus(event.params.amount)
+  // Note: totalHolders should be calculated from unique holders, not incremented here
+  post.save()
 
-    // Update content coin stats
-    let contentCoin = ContentCoin.load(event.address)
-    if (contentCoin) {
-      contentCoin.totalMints = contentCoin.totalMints.plus(BigInt.fromI32(1))
-      contentCoin.totalSupply = contentCoin.totalSupply.plus(event.params.amount)
-      contentCoin.save()
-    }
-  }
+  // Update content coin stats
+  contentCoin.totalMints = contentCoin.totalMints.plus(BigInt.fromI32(1))
+  contentCoin.totalSupply = contentCoin.totalSupply.plus(event.params.amount)
+  contentCoin.save()
 }
 
 // Handle CreatorCoin Transfer events
@@ -327,6 +352,7 @@ export function handleCreatorCoinTransfer(event: CreatorCoinTransfer): void {
     fromUser.totalTransfers = BigInt.fromI32(0)
     fromUser.totalSwaps = BigInt.fromI32(0)
     fromUser.totalRewards = BigInt.fromI32(0)
+    fromUser.save()
   }
 
   let toUser = User.load(event.params.to)
@@ -337,6 +363,7 @@ export function handleCreatorCoinTransfer(event: CreatorCoinTransfer): void {
     toUser.totalTransfers = BigInt.fromI32(0)
     toUser.totalSwaps = BigInt.fromI32(0)
     toUser.totalRewards = BigInt.fromI32(0)
+    toUser.save()
   }
 
   // Update user stats
@@ -347,23 +374,9 @@ export function handleCreatorCoinTransfer(event: CreatorCoinTransfer): void {
   fromUser.save()
   toUser.save()
 
-  // Create transfer entity
-  let transferId = createId("creator-", event.transaction.hash, event.logIndex)
-  let transfer = new Transfer(transferId)
-  transfer.post = Bytes.fromHexString("0x0000000000000000000000000000000000000000") // CreatorCoin as special post
-  transfer.from = event.params.from
-  transfer.to = event.params.to
-  transfer.amount = event.params.value
-  transfer.timestamp = event.block.timestamp
-  transfer.blockNumber = event.block.number
-  transfer.transactionHash = event.transaction.hash
-  transfer.save()
-
-  // Update creator coin stats
-  let creatorCoin = CreatorCoin.load(event.address)
-  if (creatorCoin) {
-    creatorCoin.totalSupply = creatorCoin.totalSupply.plus(event.params.value)
-    creatorCoin.totalHolders = creatorCoin.totalHolders.plus(BigInt.fromI32(1))
-    creatorCoin.save()
-  }
+  // Note: CreatorCoin transfers don't create Transfer entities linked to Posts
+  // because CreatorCoin transfers are not associated with specific posts.
+  // We track them via user stats only.
+  // CreatorCoin entities are keyed by creator address, not contract address,
+  // so we can't load them by event.address here.
 }

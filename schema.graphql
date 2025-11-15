@@ -14,15 +14,10 @@ type Post @entity(immutable: false) {
   blockNumber: BigInt!
   transactionHash: Bytes!
 
-  # IPFS Content Fields
-  ipfsHash: String # Extracted IPFS hash
+  # IPFS Content Fields - Reference to PostMetadata entity
+  ipfsHash: String # Extracted IPFS hash (used to link to PostMetadata)
   ipfsGatewayURL: String # IPFS gateway URL for fetching content
-  ipfsContentType: String # Content type (e.g., "application/json")
-  ipfsMetadata: String # Raw IPFS metadata JSON
-  ipfsDescription: String # Parsed description from IPFS
-  ipfsImage: String # Parsed image URL from IPFS
-  ipfsExternalUrl: String # Parsed external URL from IPFS
-  ipfsAttributes: String # Parsed attributes JSON from IPFS
+  metadata: PostMetadata # Link to file-based metadata entity
 
   # Social engagement metrics
   totalSupply: BigInt!
@@ -131,5 +126,20 @@ type Reward @entity(immutable: true) {
   timestamp: BigInt!
   blockNumber: BigInt!
   transactionHash: Bytes!
+}
+
+# IPFS File Data Source Entity - Immutable, populated by file data source handler
+type PostMetadata @entity(immutable: true) {
+  id: String! # IPFS CID (Content Identifier)
+  contentType: String # Content type (e.g., "application/json")
+  metadata: String # Raw IPFS metadata JSON
+  description: String # Parsed description from IPFS
+  image: String # Parsed image URL from IPFS
+  externalUrl: String # Parsed external URL from IPFS
+  content: String # Parsed content/text from IPFS
+  attributes: String # Parsed attributes JSON from IPFS
+  
+  # Relationship back to Post (using @derivedFrom)
+  posts: [Post!]! @derivedFrom(field: "metadata")
 }
 
