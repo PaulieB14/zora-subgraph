@@ -37,7 +37,8 @@ export function handlePostMetadata(content: Bytes): void {
   // Entity doesn't exist - create it now
   metadata = new PostMetadata(cid)
   
-  // Parse JSON metadata from bytes
+  // Parse JSON metadata from bytes FIRST, before any save operations
+  // This minimizes the window between check and save
   const jsonValue = json.fromBytes(content)
   
   if (jsonValue.kind === JSONValueKind.OBJECT) {
@@ -96,6 +97,15 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
+  // FINAL CHECK: Double-check entity doesn't exist right before save
+  // This catches race conditions where another handler created it between initial check and save
+  // Critical for immutable entities - cannot update, so must return early if exists
+  let finalCheck = PostMetadata.load(cid)
+  if (finalCheck != null) {
+    log.warning("PostMetadata was created by another handler for CID: {} - skipping save (race condition)", [cid])
+    return
+  }
+
   // Save the entity - following tutorial pattern exactly
   // Tutorial shows: post.save(); with no checks before or after
   // File Data Sources guarantee this handler runs exactly once per CID
