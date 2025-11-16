@@ -29,11 +29,12 @@ export function handlePostMetadata(content: Bytes): void {
   let metadata = PostMetadata.load(cid)
   let createdShell = false
   if (metadata == null) {
+    // This should be rare (shell should have been created in mapping),
+    // but fallback to creating one here if necessary.
     metadata = new PostMetadata(cid)
-    // Save shell immediately to avoid race conditions with concurrent handlers
     metadata.save()
     createdShell = true
-    log.info("Created PostMetadata shell for CID: {}", [cid])
+    log.warning("PostMetadata shell missing in handler for CID: {} - creating fallback shell", [cid])
   }
   
   // Parse JSON metadata from bytes FIRST, before any save operations

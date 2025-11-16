@@ -21,7 +21,8 @@ import {
   Mint, 
   Transfer, 
   Swap, 
-  Reward
+  Reward,
+  PostMetadata
 } from "../generated/schema"
 import { ContentCoinTemplate, CreatorCoinTemplate, PostMetadataTemplate } from "../generated/templates"
 import { extractIPFSHash, buildIPFSURL } from "./ipfs-handler"
@@ -62,8 +63,15 @@ function processIPFSURI(post: Post, contentURI: string): void {
   post.ipfsHash = hash
   post.ipfsGatewayURL = buildIPFSURL(hash)
   
-  // Link Post to PostMetadata entity - directly store CID as relation ID
-  // The File Data Source handler is the ONLY place that creates PostMetadata entities
+  // Ensure PostMetadata shell exists immediately to avoid CID creation races
+  let metadataShell = PostMetadata.load(hash)
+  if (metadataShell == null) {
+    metadataShell = new PostMetadata(hash)
+    metadataShell.save()
+    log.info("Created PostMetadata shell from mapping for CID: {}", [hash])
+  }
+
+  // Link Post to PostMetadata entity - store CID as relation ID
   post.metadata = hash
   
   // Spawn File Data Source to fetch and parse IPFS content
