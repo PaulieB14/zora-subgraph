@@ -129,10 +129,10 @@ type Reward @entity(immutable: true) {
 }
 
 # IPFS File Data Source Entity - Populated by file data source handler
-# Following tutorial pattern EXACTLY: immutable: true, no existence checks
-# Tutorial: https://thegraph.com/blog/file-data-sources-tutorial/
-# File Data Sources guarantee single execution per CID - Graph Node handles deduplication
-type PostMetadata @entity(immutable: true) {
+# Using immutable: false to allow safe load-or-update pattern for shared CIDs
+# Multiple posts can reuse a CID, so handler may run multiple times per CID
+# Non-immutable lets us update the same entity without vid conflicts
+type PostMetadata @entity(immutable: false) {
   id: String! # IPFS CID (Content Identifier)
   contentType: String # Content type (e.g., "application/json")
   metadata: String # Raw IPFS metadata JSON

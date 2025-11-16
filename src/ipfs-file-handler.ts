@@ -2,18 +2,18 @@
 // This handler processes IPFS files fetched via File Data Sources
 // File Data Sources ensure this handler runs exactly ONCE per unique CID
 // NOTE: This file must be separate from mapping.ts and cannot import contract bindings
-// VERSION: v3.12.0 - Defensive check REQUIRED for immutable entities with CID as ID
-// Official example: https://github.com/graphprotocol/graph-tooling/tree/main/examples/matic-lens-protocol-posts-subgraph
-// Key difference: Official example uses Post ID (unique per post), we use CID (one per CID)
-// With immutable: true, if entity exists, we MUST return early (cannot update immutable entities)
+// VERSION: v3.14.0 - Load-or-update pattern with immutable: false to prevent vid errors
+// Official tutorial uses Post ID per post; we intentionally reuse CID across posts
+// Multiple posts referencing same CID means handler can run multiple times per CID
+// Using immutable: false lets us update an existing entity instead of racing on creation
 
 import { json, Bytes, dataSource, log, JSONValueKind } from "@graphprotocol/graph-ts"
 import { PostMetadata } from "../generated/schema"
 
 // File Data Source Handler - Called exactly once per CID when IPFS content is fetched
 // THIS IS THE ONLY PLACE WE EVER CREATE PostMetadata ENTITIES
-// CRITICAL: Must check if entity exists because we use CID as entity ID (not Post ID)
-// Official example uses Post ID (unique per post), but we use CID (shared by multiple posts)
+// CRITICAL: Must load-or-create because we use CID as entity ID (shared by many posts)
+// Official example uses Post ID (unique per post), but we intentionally dedupe by CID
 export function handlePostMetadata(content: Bytes): void {
   // Get the IPFS CID from the data source context
   // This is the CID passed to PostMetadataTemplate.create(cid)
@@ -24,21 +24,14 @@ export function handlePostMetadata(content: Bytes): void {
     content.length.toString()
   ])
 
-  // CRITICAL: Check if entity already exists (immutable entities cannot be updated)
-  // Official example uses Post ID as entity ID (unique per post), so no conflicts
-  // We use CID as entity ID (one per CID), so handler may run multiple times for same CID
-  // If entity exists, we MUST return early - cannot update immutable entities
+  // Load existing entity if one already exists (shared CID)
+  // With immutable: false we can safely update the same record
   let metadata = PostMetadata.load(cid)
-  if (metadata != null) {
-    log.warning("PostMetadata already exists for CID: {} - skipping (immutable entity)", [cid])
-    return
+  if (metadata == null) {
+    metadata = new PostMetadata(cid)
   }
-
-  // Entity doesn't exist - create it now
-  metadata = new PostMetadata(cid)
   
   // Parse JSON metadata from bytes FIRST, before any save operations
-  // This minimizes the window between check and save
   const jsonValue = json.fromBytes(content)
   
   if (jsonValue.kind === JSONValueKind.OBJECT) {
@@ -97,18 +90,8 @@ export function handlePostMetadata(content: Bytes): void {
     metadata.content = content.toString()
   }
   
-  // FINAL CHECK: Double-check entity doesn't exist right before save
-  // This catches race conditions where another handler created it between initial check and save
-  // Critical for immutable entities - cannot update, so must return early if exists
-  let finalCheck = PostMetadata.load(cid)
-  if (finalCheck != null) {
-    log.warning("PostMetadata was created by another handler for CID: {} - skipping save (race condition)", [cid])
-    return
-  }
-
-  // Save the entity - following tutorial pattern exactly
-  // Tutorial shows: post.save(); with no checks before or after
-  // File Data Sources guarantee this handler runs exactly once per CID
+  // Save the entity - load-or-update pattern
+  // File Data Sources generally run once per CID, but this is safe if they don't
   metadata.save()
   log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
