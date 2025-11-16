@@ -27,14 +27,20 @@ export function handlePostMetadata(content: Bytes): void {
   // Load existing entity if one already exists (shared CID)
   // With immutable: false we can safely update the same record
   let metadata = PostMetadata.load(cid)
-  let createdShell = false
   if (metadata == null) {
-    // This should be rare (shell should have been created in mapping),
+    // This should be rare (mapping should have created the shell),
     // but fallback to creating one here if necessary.
     metadata = new PostMetadata(cid)
     metadata.save()
-    createdShell = true
-    log.warning("PostMetadata shell missing in handler for CID: {} - creating fallback shell", [cid])
+    log.warning(
+      "PostMetadata shell missing in handler for CID: {} - created fallback shell",
+      [cid]
+    )
+    // Reload the entity so subsequent save is treated as an update, not a second insert
+    let reloaded = PostMetadata.load(cid)
+    if (reloaded != null) {
+      metadata = reloaded
+    }
   }
   
   // Parse JSON metadata from bytes FIRST, before any save operations
@@ -99,8 +105,5 @@ export function handlePostMetadata(content: Bytes): void {
   // Save the entity - load-or-update pattern
   // File Data Sources generally run once per CID, but this is safe if they don't
   metadata.save()
-  log.info(
-    "Successfully saved PostMetadata - CID: {} (shellCreated={})",
-    [cid, createdShell ? "true" : "false"]
-  )
+  log.info("Successfully saved PostMetadata - CID: {}", [cid])
 }
