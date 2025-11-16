@@ -2,7 +2,7 @@
 // Comprehensive tracking of ALL Zora social interactions and engagement
 // Following all 6 Graph Best Practices from https://thegraph.com/docs/en/subgraphs/best-practices/pruning/
 
-import { BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts"
+import { BigInt, Bytes, DataSourceContext, ethereum, log } from "@graphprotocol/graph-ts"
 import {
   CoinCreatedV4
 } from "../generated/ZoraFactory/ZoraFactory"
@@ -62,26 +62,22 @@ function processIPFSURI(post: Post, contentURI: string): void {
   // Store hash and gateway URL in Post entity
   post.ipfsHash = hash
   post.ipfsGatewayURL = buildIPFSURL(hash)
+  post.metadataCid = hash
   
-  // Ensure PostMetadata shell exists immediately to avoid CID creation races
-  let metadataShell = PostMetadata.load(hash)
-  if (metadataShell == null) {
-    metadataShell = new PostMetadata(hash)
-    metadataShell.save()
-    log.info("Created PostMetadata shell from mapping for CID: {}", [hash])
+  // Ensure PostMetadata entity exists per post (ID = post.id)
+  let metadataEntity = PostMetadata.load(post.id)
+  if (metadataEntity == null) {
+    metadataEntity = new PostMetadata(post.id)
+    metadataEntity.post = post.id
   }
-
-  // Link Post to PostMetadata entity - store CID as relation ID
-  post.metadata = hash
+  metadataEntity.cid = hash
+  metadataEntity.save()
+  post.metadataEntity = post.id
   
-  // Spawn File Data Source to fetch and parse IPFS content
-  // The Graph Node guarantees:
-  // - File is fetched once per unique CID
-  // - Handler runs exactly once when file becomes available
-  // - Multiple create() calls for same CID are automatically deduplicated
-  // This is idempotent - safe to call multiple times for the same CID
-  // The File Data Source handler will create the PostMetadata entity if it doesn't exist
-  PostMetadataTemplate.create(hash)
+  // Spawn File Data Source with post context so handler can update by post ID
+  let context = new DataSourceContext()
+  context.setBytes("postId", post.id)
+  PostMetadataTemplate.createWithContext(hash, context)
   
   log.info("Spawned IPFS File Data Source for post {} - CID: {}", [
     post.id.toHexString(),

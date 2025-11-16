@@ -17,7 +17,8 @@ type Post @entity(immutable: false) {
   # IPFS Content Fields - Reference to PostMetadata entity
   ipfsHash: String # Extracted IPFS hash (used to link to PostMetadata)
   ipfsGatewayURL: String # IPFS gateway URL for fetching content
-  metadata: String! # IPFS CID (Content Identifier) - links to PostMetadata entity by ID
+  metadataCid: String # IPFS CID (Content Identifier)
+  metadataEntity: PostMetadata
 
   # Social engagement metrics
   totalSupply: BigInt!
@@ -129,11 +130,12 @@ type Reward @entity(immutable: true) {
 }
 
 # IPFS File Data Source Entity - Populated by file data source handler
-# Using immutable: false to allow safe load-or-update pattern for shared CIDs
-# Multiple posts can reuse a CID, so handler may run multiple times per CID
-# Non-immutable lets us update the same entity without vid conflicts
+# Entity ID is the Post ID (ensures uniqueness per post as in tutorial pattern)
+# We still store the actual CID string for reference/dedup
 type PostMetadata @entity(immutable: false) {
-  id: String! # IPFS CID (Content Identifier)
+  id: Bytes! # Matches Post.id (ContentCoin address)
+  post: Post!
+  cid: String! # Actual IPFS CID
   contentType: String # Content type (e.g., "application/json")
   metadata: String # Raw IPFS metadata JSON
   description: String # Parsed description from IPFS
