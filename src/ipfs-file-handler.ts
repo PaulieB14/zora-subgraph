@@ -27,8 +27,13 @@ export function handlePostMetadata(content: Bytes): void {
   // Load existing entity if one already exists (shared CID)
   // With immutable: false we can safely update the same record
   let metadata = PostMetadata.load(cid)
+  let createdShell = false
   if (metadata == null) {
     metadata = new PostMetadata(cid)
+    // Save shell immediately to avoid race conditions with concurrent handlers
+    metadata.save()
+    createdShell = true
+    log.info("Created PostMetadata shell for CID: {}", [cid])
   }
   
   // Parse JSON metadata from bytes FIRST, before any save operations
@@ -93,5 +98,8 @@ export function handlePostMetadata(content: Bytes): void {
   // Save the entity - load-or-update pattern
   // File Data Sources generally run once per CID, but this is safe if they don't
   metadata.save()
-  log.info("Successfully saved PostMetadata - CID: {}", [cid])
+  log.info(
+    "Successfully saved PostMetadata - CID: {} (shellCreated={})",
+    [cid, createdShell ? "true" : "false"]
+  )
 }
