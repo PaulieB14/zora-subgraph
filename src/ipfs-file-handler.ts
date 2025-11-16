@@ -15,33 +15,23 @@ import { PostMetadata } from "../generated/schema"
 // CRITICAL: Must load-or-create because we use CID as entity ID (shared by many posts)
 // Official example uses Post ID (unique per post), but we intentionally dedupe by CID
 export function handlePostMetadata(content: Bytes): void {
-  // Get the IPFS CID from the data source context
-  // This is the CID passed to PostMetadataTemplate.create(cid)
   const cid = dataSource.stringParam()
+  const context = dataSource.context()
+  const postId = context.getBytes("postId")
   
   log.info("Processing IPFS metadata - CID: {}, size: {}", [
     cid,
     content.length.toString()
   ])
 
-  // Load existing entity if one already exists (shared CID)
-  // With immutable: false we can safely update the same record
-  let metadata = PostMetadata.load(cid)
+  // Load or create metadata entity keyed by post ID
+  let metadata = PostMetadata.load(postId)
   if (metadata == null) {
-    // This should be rare (mapping should have created the shell),
-    // but fallback to creating one here if necessary.
-    metadata = new PostMetadata(cid)
-    metadata.save()
-    log.warning(
-      "PostMetadata shell missing in handler for CID: {} - created fallback shell",
-      [cid]
-    )
-    // Reload the entity so subsequent save is treated as an update, not a second insert
-    let reloaded = PostMetadata.load(cid)
-    if (reloaded != null) {
-      metadata = reloaded
-    }
+    metadata = new PostMetadata(postId)
+    metadata.post = postId
   }
+  metadata.post = postId
+  metadata.cid = cid
   
   // Parse JSON metadata from bytes FIRST, before any save operations
   const jsonValue = json.fromBytes(content)
@@ -105,5 +95,8 @@ export function handlePostMetadata(content: Bytes): void {
   // Save the entity - load-or-update pattern
   // File Data Sources generally run once per CID, but this is safe if they don't
   metadata.save()
-  log.info("Successfully saved PostMetadata - CID: {}", [cid])
+  log.info("Successfully saved PostMetadata - post={}, CID={}", [
+    postId.toHexString(),
+    cid
+  ])
 }

@@ -73,6 +73,7 @@ function processIPFSURI(post: Post, contentURI: string): void {
   metadataEntity.cid = hash
   metadataEntity.save()
   post.metadataEntity = post.id
+  post.metadataCid = hash
   
   // Spawn File Data Source with post context so handler can update by post ID
   let context = new DataSourceContext()
